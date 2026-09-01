@@ -19,8 +19,10 @@
     Play,
     Plus,
     RefreshCw,
+    Search,
     Settings2,
     Terminal,
+    Trash2,
     Upload,
     X
   } from '@lucide/svelte';
@@ -585,11 +587,14 @@
                 <button class:active={logLevel === level} onclick={() => (logLevel = level as typeof logLevel)}>{level}</button>
               {/each}
             </div>
-            <label class="log-search"><input bind:value={logQuery} placeholder="筛选：任务 ID / 来源 / 消息" /></label>
+            <label class="log-search">
+              <Search size={14} strokeWidth={2} />
+              <input bind:value={logQuery} placeholder="筛选任务 ID、来源或消息" aria-label="筛选日志" />
+            </label>
             <button class="log-action" onclick={() => (logsPaused = !logsPaused)}>
-              {#if logsPaused}<Play size={13} />继续{:else}<Pause size={13} />暂停{/if}
+              {#if logsPaused}<Play size={14} strokeWidth={2} />继续{:else}<Pause size={14} strokeWidth={2} />暂停{/if}
             </button>
-            <button class="log-action" onclick={() => (serviceLogs = [])}>清空</button>
+            <button class="log-action" onclick={() => (serviceLogs = [])}><Trash2 size={14} strokeWidth={2} />清空</button>
           </div>
 
           <div class="log-stream" bind:this={logViewport}>
