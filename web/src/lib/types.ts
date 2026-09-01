@@ -83,3 +83,58 @@ export interface ServiceLogResponse {
   latest_sequence: number;
   capacity: number;
 }
+
+export interface OpenApiSchema {
+  type?: string;
+  format?: string;
+  title?: string;
+  description?: string;
+  default?: unknown;
+  enum?: unknown[];
+  items?: OpenApiSchema;
+  properties?: Record<string, OpenApiSchema>;
+  required?: string[];
+  oneOf?: OpenApiSchema[];
+  anyOf?: OpenApiSchema[];
+  allOf?: OpenApiSchema[];
+  $ref?: string;
+  [key: string]: unknown;
+}
+
+export interface OpenApiParameter {
+  name: string;
+  in: string;
+  required?: boolean;
+  description?: string;
+  schema?: OpenApiSchema;
+}
+
+export interface OpenApiOperation {
+  summary?: string;
+  description?: string;
+  operationId?: string;
+  tags?: string[];
+  parameters?: OpenApiParameter[];
+  requestBody?: {
+    required?: boolean;
+    content?: Record<string, { schema?: OpenApiSchema }>;
+  };
+  responses?: Record<string, { description?: string; content?: Record<string, unknown> }>;
+  security?: Record<string, string[]>[];
+}
+
+export interface OpenApiDocument {
+  openapi: string;
+  info: {
+    title: string;
+    version: string;
+    summary?: string;
+    description?: string;
+  };
+  tags?: { name: string; description?: string }[];
+  paths: Record<string, Record<string, OpenApiOperation | unknown>>;
+  components?: {
+    schemas?: Record<string, OpenApiSchema>;
+    securitySchemes?: Record<string, { type?: string; name?: string; in?: string; description?: string }>;
+  };
+}

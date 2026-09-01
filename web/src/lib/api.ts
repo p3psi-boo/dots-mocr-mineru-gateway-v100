@@ -1,5 +1,6 @@
 import type {
   HealthStatus,
+  OpenApiDocument,
   ServiceLogResponse,
   SubmitOptions,
   TaskResult,
@@ -63,4 +64,8 @@ export async function getTaskResult(taskId: string): Promise<TaskResult> {
 export async function getServiceLogs(after = 0, limit = 200): Promise<ServiceLogResponse> {
   const query = new URLSearchParams({ after: String(after), limit: String(limit) });
   return json(await fetch(`/service/logs?${query}`));
+}
+
+export async function getOpenApiDocument(signal?: AbortSignal): Promise<OpenApiDocument> {
+  return json(await fetch('/openapi.json', { signal }));
 }

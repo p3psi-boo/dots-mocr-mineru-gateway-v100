@@ -2,6 +2,7 @@
   import { onMount, tick } from 'svelte';
   import {
     ArrowLeft,
+    BookOpen,
     Check,
     ChevronRight,
     CircleAlert,
@@ -28,6 +29,7 @@
   } from '@lucide/svelte';
   import InteractiveMarkdown from '$lib/InteractiveMarkdown.svelte';
   import JsonTree from '$lib/JsonTree.svelte';
+  import OpenApiDocs from '$lib/OpenApiDocs.svelte';
   import { getHealth, getServiceLogs, getTask, getTaskResult, submitTask } from '$lib/api';
   import { copyTextCompat, downloadBlob, safeDownloadName } from '$lib/interactive-markdown';
   import { loadFile, loadResult, loadTasks, saveFiles, saveResult, saveTasks } from '$lib/storage';
@@ -42,7 +44,7 @@
     TaskStatus
   } from '$lib/types';
 
-  type View = 'new' | 'tasks' | 'logs' | 'detail';
+  type View = 'new' | 'tasks' | 'logs' | 'api' | 'detail';
   type ResultTab = 'markdown' | 'json';
 
   const terminalStates: TaskState[] = ['completed', 'failed', 'expired'];
@@ -145,6 +147,7 @@
     url.search = '';
     if (nextView === 'tasks') url.searchParams.set('view', 'tasks');
     if (nextView === 'logs') url.searchParams.set('view', 'logs');
+    if (nextView === 'api') url.searchParams.set('view', 'api');
     if (nextView === 'detail') url.searchParams.set('task', taskId);
     history[replace ? 'replaceState' : 'pushState']({}, '', url);
   }
@@ -160,7 +163,9 @@
       await loadSelectedTask();
     } else {
       const requestedView = url.searchParams.get('view');
-      view = requestedView === 'tasks' || requestedView === 'logs' ? requestedView : 'new';
+      view = requestedView === 'tasks' || requestedView === 'logs' || requestedView === 'api'
+        ? requestedView
+        : 'new';
       selectedTaskId = '';
       if (view === 'logs') await refreshLogs(true);
     }
@@ -435,6 +440,10 @@
         <Terminal size={18} strokeWidth={1.8} />
         <span>日志</span>
       </button>
+      <button class:active={view === 'api'} onclick={() => updateRoute('api')}>
+        <BookOpen size={18} strokeWidth={1.8} />
+        <span>API 文档</span>
+      </button>
     </nav>
 
     <div class="recent-label">最近完成</div>
@@ -625,6 +634,8 @@
           </div>
         </div>
       </section>
+    {:else if view === 'api'}
+      <OpenApiDocs />
     {:else}
       <section class="detail-view">
         <header class="detail-header">

@@ -89,6 +89,11 @@
     await copyText(text, '表格已复制');
   }
 
+  async function copyBlockText(event: MouseEvent, value: string): Promise<void> {
+    event.stopPropagation();
+    await copyText(value, '文本已复制');
+  }
+
   function exportTable(event: MouseEvent, index: number): void {
     event.stopPropagation();
     const block = (event.currentTarget as HTMLElement).closest('.interactive-block') as HTMLElement;
@@ -135,6 +140,9 @@
         </div>
 
         {#if type === 'text'}
+          <div class="element-actions">
+            <button title="复制文本" aria-label="复制文本" onclick={(event) => copyBlockText(event, textFor(block))}><Clipboard size={14} />复制文本</button>
+          </div>
           {#if block.text_level === 1}
             <h1>{@html richText(textFor(block), true)}</h1>
           {:else if block.text_level === 2}

@@ -183,6 +183,7 @@ uses only the MinerU-compatible asynchronous task API and provides:
 - a browser-local task history
 - side-by-side original and JSON-driven interactive Markdown review, with selectable elements
 - table CSV export/copy, image copy, external-link actions, Markdown download, and a collapsible JSON tree
+- built-in OpenAPI reference with searchable endpoint groups and schema inspection
 - a live structured event log for the gateway, task queue, and vLLM requests
 
 Task identifiers are kept in local storage, while uploaded originals and
@@ -207,6 +208,10 @@ Implemented protocol v2 routes:
 - `POST /tasks`
 - `GET /tasks/{task_id}`
 - `GET /tasks/{task_id}/result`
+
+The generated OpenAPI schema is available at `GET /openapi.json`. The WebUI
+renders it in the **API 文档** section; FastAPI's standard reference remains
+available at `/docs`.
 
 Synchronous example:
 

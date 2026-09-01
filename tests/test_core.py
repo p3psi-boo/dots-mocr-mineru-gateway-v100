@@ -1,4 +1,4 @@
-from dotmocr_api.app import normalize_blocks, parse_blocks, smart_resize
+from dotmocr_api.app import app, normalize_blocks, parse_blocks, smart_resize
 
 
 def test_smart_resize_respects_factor_and_pixel_budget():
@@ -40,3 +40,18 @@ def test_normalize_blocks_maps_coordinates_and_rejects_invalid_entries():
         }
     ]
     assert warnings == ["block 1: empty bbox"]
+
+
+def test_openapi_document_describes_public_endpoints_and_api_key():
+    document = app.openapi()
+
+    assert document["info"]["title"] == "dots.mocr Layout OCR API"
+    assert document["info"]["summary"]
+    assert "/v1/ocr/layout" in document["paths"]
+    assert "/tasks" in document["paths"]
+    assert document["paths"]["/v1/ocr/layout"]["post"]["security"] == [
+        {"GatewayApiKey": []}
+    ]
+    assert document["components"]["securitySchemes"]["GatewayApiKey"]["name"] == (
+        "X-API-Key"
+    )

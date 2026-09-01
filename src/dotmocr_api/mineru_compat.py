@@ -753,7 +753,12 @@ def create_mineru_router(
         assets = await load_uploads(files, max_upload_bytes)
         return manager.submit(options, assets)
 
-    @router.get("/health", name="mineru_health")
+    @router.get(
+        "/health",
+        name="mineru_health",
+        summary="Read gateway capacity",
+        description="Returns MinerU protocol metadata and current task counters.",
+    )
     async def health() -> dict[str, Any]:
         stats = manager.stats()
         return {
@@ -771,7 +776,13 @@ def create_mineru_router(
             "model_backend": "dots.mocr-vllm",
         }
 
-    @router.post("/tasks", status_code=202, name="mineru_submit_task")
+    @router.post(
+        "/tasks",
+        status_code=202,
+        name="mineru_submit_task",
+        summary="Submit an asynchronous parse task",
+        description="Uploads documents and returns a task ID for status polling.",
+    )
     async def submit_task(
         request: Request,
         parsed: Annotated[
@@ -784,7 +795,12 @@ def create_mineru_router(
         payload["message"] = "Task submitted successfully"
         return json_response(payload, status_code=202)
 
-    @router.post("/file_parse", name="mineru_file_parse")
+    @router.post(
+        "/file_parse",
+        name="mineru_file_parse",
+        summary="Parse files synchronously",
+        description="Uploads documents and waits for the complete MinerU-shaped result.",
+    )
     async def file_parse(
         request: Request,
         parsed: Annotated[
@@ -806,7 +822,11 @@ def create_mineru_router(
             return zip_response(task, request, synchronous=True)
         return json_result_response(task, request, synchronous=True)
 
-    @router.get("/tasks/{task_id}", name="mineru_task_status")
+    @router.get(
+        "/tasks/{task_id}",
+        name="mineru_task_status",
+        summary="Read task status",
+    )
     async def task_status(task_id: str, request: Request) -> Response:
         manager.cleanup()
         task = manager.tasks.get(task_id)
@@ -814,7 +834,11 @@ def create_mineru_router(
             raise HTTPException(status_code=404, detail="Task not found")
         return json_response(task.status_payload(request, manager.queued_ahead(task)))
 
-    @router.get("/tasks/{task_id}/result", name="mineru_task_result")
+    @router.get(
+        "/tasks/{task_id}/result",
+        name="mineru_task_result",
+        summary="Read task result",
+    )
     async def task_result(task_id: str, request: Request) -> Response:
         manager.cleanup()
         task = manager.tasks.get(task_id)

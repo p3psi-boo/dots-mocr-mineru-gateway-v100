@@ -14,8 +14,9 @@ from typing import Annotated, Any
 
 import httpx
 import orjson
-from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Security, UploadFile
 from fastapi.responses import Response
+from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 from json_repair import repair_json
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -107,13 +108,40 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="dots.mocr Layout OCR API",
+    summary="Document layout OCR and MinerU-compatible parsing gateway",
+    description=(
+        "Parse PDF and image documents with dots.mocr. The API provides a "
+        "native single-page layout endpoint and MinerU-compatible synchronous "
+        "and asynchronous task workflows."
+    ),
     version=__version__,
+    openapi_tags=[
+        {
+            "name": "System",
+            "description": "Service health, capacity, and operational diagnostics.",
+        },
+        {
+            "name": "Layout OCR",
+            "description": "Native dots.mocr page-layout extraction.",
+        },
+        {
+            "name": "MinerU compatibility",
+            "description": "MinerU protocol v2 compatible parsing and task APIs.",
+        },
+    ],
     lifespan=lifespan,
+)
+
+api_key_header = APIKeyHeader(
+    name="X-API-Key",
+    scheme_name="GatewayApiKey",
+    auto_error=False,
+    description="Optional gateway API key when PUBLIC_API_KEY is configured.",
 )
 
 
 async def require_api_key(
-    x_api_key: Annotated[str | None, Header()] = None,
+    x_api_key: Annotated[str | None, Security(api_key_header)] = None,
 ) -> None:
     if not PUBLIC_API_KEY:
         return
@@ -372,7 +400,12 @@ def normalize_blocks(
     return blocks, warnings[:50]
 
 
-@app.get("/healthz")
+@app.get(
+    "/healthz",
+    tags=["System"],
+    summary="Check model connectivity",
+    description="Returns healthy only when the gateway can reach the vLLM backend.",
+)
 async def healthz() -> dict[str, str]:
     try:
         response = await app.state.http.get(f"{VLLM_BASE_URL}/health")
@@ -392,13 +425,24 @@ async def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/service/logs")
+@app.get(
+    "/service/logs",
+    tags=["System"],
+    summary="Read recent service logs",
+    description="Returns structured log entries after the requested sequence cursor.",
+)
 async def service_log_entries(after: int = 0, limit: int = 200) -> dict[str, Any]:
     return service_logs.read(after=max(0, after), limit=limit)
 
 
 @app.post(
     "/v1/ocr/layout",
+    tags=["Layout OCR"],
+    summary="Extract page layout",
+    description=(
+        "Runs one image page through dots.mocr and returns ordered layout blocks "
+        "with original-pixel bounding boxes and recognized content."
+    ),
     dependencies=[Depends(require_api_key)],
 )
 async def ocr_layout(
