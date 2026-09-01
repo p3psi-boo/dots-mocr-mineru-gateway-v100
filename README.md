@@ -181,7 +181,8 @@ uses only the MinerU-compatible asynchronous task API and provides:
 - MinerU-supported parse options and page ranges
 - queue and processing status polling
 - a browser-local task history
-- side-by-side original, Markdown, and JSON result review
+- side-by-side original and JSON-driven interactive Markdown review, with selectable elements
+- table CSV export/copy, image copy, external-link actions, Markdown download, and a collapsible JSON tree
 - a live structured event log for the gateway, task queue, and vLLM requests
 
 Task identifiers are kept in local storage, while uploaded originals and

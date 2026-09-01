@@ -1,19 +1,5 @@
-<script module lang="ts">
-  import { marked } from 'marked';
-  import markedKatex from 'marked-katex-extension';
-  import 'katex/dist/katex.min.css';
-
-  let katexReady = false;
-  export function ensureKatex(): void {
-    if (katexReady) return;
-    marked.use(markedKatex({ throwOnError: false }));
-    katexReady = true;
-  }
-</script>
-
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import DOMPurify from 'dompurify';
   import {
     ArrowLeft,
     Check,
@@ -21,7 +7,7 @@
     CircleAlert,
     Clipboard,
     Clock3,
-    Code2,
+    Download,
     File as FileIcon,
     FileCheck2,
     FileText,
@@ -38,7 +24,10 @@
     Upload,
     X
   } from '@lucide/svelte';
+  import InteractiveMarkdown from '$lib/InteractiveMarkdown.svelte';
+  import JsonTree from '$lib/JsonTree.svelte';
   import { getHealth, getServiceLogs, getTask, getTaskResult, submitTask } from '$lib/api';
+  import { downloadBlob, safeDownloadName } from '$lib/interactive-markdown';
   import { loadFile, loadResult, loadTasks, saveFiles, saveResult, saveTasks } from '$lib/storage';
   import type {
     FileResult,
@@ -50,8 +39,6 @@
     TaskState,
     TaskStatus
   } from '$lib/types';
-
-  ensureKatex();
 
   type View = 'new' | 'tasks' | 'logs' | 'detail';
   type ResultTab = 'markdown' | 'json';
@@ -119,19 +106,6 @@
         .includes(query);
     })
   );
-  const markdownHtml = $derived.by(() => {
-    const artifact = selectedArtifact;
-    const source = (artifact?.md_content ?? '').replace(
-      /!\[([^\]]*)\]\(images\/([^)]+)\)/g,
-      (match, alt: string, name: string) => {
-        const dataUrl = artifact?.images?.[name];
-        return dataUrl ? `![${alt}](${dataUrl})` : match;
-      }
-    );
-    return DOMPurify.sanitize(marked.parse(source) as string, {
-      USE_PROFILES: { html: true, mathMl: true }
-    });
-  });
   const prettyJson = $derived(
     JSON.stringify(expandArtifact(selectedArtifact), null, 2)
   );
@@ -363,6 +337,15 @@
     await navigator.clipboard.writeText(content);
     copied = true;
     window.setTimeout(() => (copied = false), 1600);
+  }
+
+  function exportMarkdown(): void {
+    if (!selectedArtifact?.md_content) return;
+    downloadBlob(
+      selectedArtifact.md_content,
+      'text/markdown;charset=utf-8',
+      safeDownloadName(selectedArtifactName, 'md')
+    );
   }
 
   function formatDate(value: string | null): string {
@@ -666,13 +649,19 @@
                 <button class:active={resultTab === 'markdown'} onclick={() => (resultTab = 'markdown')}>Markdown</button>
                 <button class:active={resultTab === 'json'} onclick={() => (resultTab = 'json')}>JSON</button>
               </div>
-              <button class="copy" disabled={!selectedArtifact} onclick={copyResult}>
-                <span class="copy-icons" class:copied>
-                  <Clipboard size={15} class="icon-clip" />
-                  <Check size={15} class="icon-check" />
-                </span>
-                {copied ? '已复制' : '复制'}
-              </button>
+              <div class="result-actions">
+                <button class="copy" disabled={!selectedArtifact?.md_content} onclick={exportMarkdown} title="下载 Markdown 文件">
+                  <Download size={15} />
+                  导出 Markdown
+                </button>
+                <button class="copy" disabled={!selectedArtifact} onclick={copyResult}>
+                  <span class="copy-icons" class:copied>
+                    <Clipboard size={15} class="icon-clip" />
+                    <Check size={15} class="icon-check" />
+                  </span>
+                  {copied ? '已复制' : '复制'}
+                </button>
+              </div>
             </div>
             <div class="result-scroll">
               {#if resultLoading}
@@ -684,9 +673,11 @@
               {:else if selectedTask?.status === 'failed' || selectedTask?.status === 'expired'}
                 <div class="result-state failed-art"><CircleAlert size={28} /><strong>{statusText(selectedTask.status)}</strong><span>{selectedTask.error}</span></div>
               {:else if selectedArtifact && resultTab === 'markdown'}
-                <article class="markdown-body">{@html markdownHtml}</article>
+                {#key selectedArtifactName}
+                  <InteractiveMarkdown artifact={selectedArtifact} filename={selectedArtifactName} />
+                {/key}
               {:else if selectedArtifact && resultTab === 'json'}
-                <div class="json-view"><div class="json-label"><Code2 size={14} />{selectedArtifactName}.json</div><pre>{prettyJson}</pre></div>
+                <JsonTree value={expandArtifact(selectedArtifact)} filename={`${selectedArtifactName}.json`} />
               {:else}
                 <div class="result-state"><PanelLeftClose size={28} /><strong>等待解析结果</strong></div>
               {/if}

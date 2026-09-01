@@ -27,6 +27,19 @@ export interface FileResult {
   images?: Record<string, string>;
 }
 
+export interface ContentListItem {
+  type: string;
+  page_idx?: number;
+  bbox?: number[];
+  text?: string;
+  text_level?: number;
+  table_body?: string;
+  list_items?: string[];
+  sub_type?: string;
+  img_path?: string;
+  [key: string]: unknown;
+}
+
 export interface TaskResult {
   backend: string;
   version: string;
