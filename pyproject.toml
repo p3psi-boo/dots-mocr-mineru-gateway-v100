@@ -32,7 +32,7 @@ dev = [
 ]
 
 [project.scripts]
-dotocrm-api = "dotocrm_api.__main__:main"
+dotocrm-api = "dotmocr_api.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

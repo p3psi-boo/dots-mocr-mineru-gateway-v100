@@ -8,8 +8,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from dotocrm_api.app import decode_image
-from dotocrm_api.mineru_compat import create_mineru_router
+from dotmocr_api.app import decode_image
+from dotmocr_api.mineru_compat import create_mineru_router
 
 
 async def fake_inference(image, *, request_id=None):

@@ -225,7 +225,7 @@ make test
 ## Repository layout
 
 ```text
-src/dotocrm_api/       Python package
+src/dotmocr_api/       Python package
 deploy/systemd/        Rendered-at-install systemd templates
 deploy/nginx/          Nginx template
 docker/                API container image

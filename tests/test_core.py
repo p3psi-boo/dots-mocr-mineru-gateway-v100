@@ -1,4 +1,4 @@
-from dotocrm_api.app import normalize_blocks, parse_blocks, smart_resize
+from dotmocr_api.app import normalize_blocks, parse_blocks, smart_resize
 
 
 def test_smart_resize_respects_factor_and_pixel_budget():
