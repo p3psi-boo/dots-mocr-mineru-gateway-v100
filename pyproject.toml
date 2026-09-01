@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dotocrm-api"
+version = "0.1.0"
+description = "Production API gateway for dots.mocr on vLLM with MinerU-compatible endpoints"
+readme = "README.md"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "httpx>=0.27,<1",
+  "json-repair>=0.30,<1",
+  "orjson>=3.10,<4",
+  "pillow>=10,<13",
+  "pymupdf>=1.25,<2",
+  "python-multipart>=0.0.18,<1",
+  "uvicorn[standard]>=0.30,<1",
+]
+
+[project.optional-dependencies]
+vllm = [
+  "modelscope==1.39.1",
+  "vllm==0.11.2; python_version < '3.13' and sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8,<10",
+  "ruff>=0.9,<1",
+]
+
+[project.scripts]
+dotocrm-api = "dotocrm_api.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = ["E501"]
