@@ -182,6 +182,7 @@ uses only the MinerU-compatible asynchronous task API and provides:
 - queue and processing status polling
 - a browser-local task history
 - side-by-side original, Markdown, and JSON result review
+- a live structured event log for the gateway, task queue, and vLLM requests
 
 Task identifiers are kept in local storage, while uploaded originals and
 completed results are kept in IndexedDB. This mirrors MinerU's task API, which

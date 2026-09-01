@@ -1,4 +1,10 @@
-import type { HealthStatus, SubmitOptions, TaskResult, TaskStatus } from './types';
+import type {
+  HealthStatus,
+  ServiceLogResponse,
+  SubmitOptions,
+  TaskResult,
+  TaskStatus
+} from './types';
 
 async function json<T>(response: Response): Promise<T> {
   if (!response.ok) {
@@ -52,4 +58,9 @@ export async function getTask(taskId: string): Promise<TaskStatus> {
 
 export async function getTaskResult(taskId: string): Promise<TaskResult> {
   return json(await fetch(`/tasks/${encodeURIComponent(taskId)}/result`));
+}
+
+export async function getServiceLogs(after = 0, limit = 200): Promise<ServiceLogResponse> {
+  const query = new URLSearchParams({ after: String(after), limit: String(limit) });
+  return json(await fetch(`/service/logs?${query}`));
 }

@@ -54,3 +54,19 @@ export interface SubmitOptions {
   startPage: number;
   endPage: number;
 }
+
+export interface ServiceLogEntry {
+  sequence: number;
+  timestamp: string;
+  level: 'info' | 'warning' | 'error';
+  source: string;
+  message: string;
+  context: Record<string, unknown>;
+}
+
+export interface ServiceLogResponse {
+  instance_id: string;
+  items: ServiceLogEntry[];
+  latest_sequence: number;
+  capacity: number;
+}

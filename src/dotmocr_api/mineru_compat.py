@@ -21,6 +21,7 @@ from fastapi.responses import Response
 from PIL import Image
 
 from . import __version__
+from .service_logs import service_logs
 
 PROTOCOL_VERSION = 2
 COMPAT_VERSION = f"dots.mocr-mineru-compat-{__version__}"
@@ -562,6 +563,14 @@ class TaskManager:
             submit_order=self._order,
         )
         self.tasks[task.task_id] = task
+        service_logs.emit(
+            "info",
+            "queue",
+            "Task submitted",
+            task_id=task.task_id,
+            files=len(assets),
+            backend=options.backend,
+        )
         asyncio.create_task(self._run(task), name=f"mineru-compat-{task.task_id}")
         return task
 
@@ -570,6 +579,13 @@ class TaskManager:
             async with self._semaphore:
                 task.status = "processing"
                 task.started_at = utc_now_iso()
+                service_logs.emit(
+                    "info",
+                    "worker",
+                    "Task processing started",
+                    task_id=task.task_id,
+                    files=len(task.assets),
+                )
                 for asset in task.assets:
                     artifact = await process_asset(
                         asset,
@@ -579,13 +595,33 @@ class TaskManager:
                     )
                     task.artifacts[asset.stem] = artifact
                 task.status = "completed"
+                service_logs.emit(
+                    "info",
+                    "worker",
+                    "Task completed",
+                    task_id=task.task_id,
+                    files=len(task.artifacts),
+                )
         except asyncio.CancelledError:
             task.status = "failed"
             task.error = "Task cancelled"
+            service_logs.emit(
+                "warning",
+                "worker",
+                "Task cancelled",
+                task_id=task.task_id,
+            )
             raise
         except Exception as exc:
             task.status = "failed"
             task.error = str(exc)
+            service_logs.emit(
+                "error",
+                "worker",
+                "Task failed",
+                task_id=task.task_id,
+                error=type(exc).__name__,
+            )
         finally:
             task.completed_at = utc_now_iso()
             task.done.set()

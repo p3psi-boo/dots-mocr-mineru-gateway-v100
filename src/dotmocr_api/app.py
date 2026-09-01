@@ -21,6 +21,7 @@ from json_repair import repair_json
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from . import __version__
+from .service_logs import service_logs
 
 VLLM_BASE_URL = os.getenv("VLLM_BASE_URL", "http://[::1]:8001")
 VLLM_MODEL = os.getenv("VLLM_MODEL", "dots-mocr")
@@ -89,9 +90,19 @@ async def lifespan(app: FastAPI):
         ),
     )
 
-    yield
+    service_logs.emit(
+        "info",
+        "gateway",
+        "Gateway service started",
+        version=__version__,
+        model=VLLM_MODEL,
+    )
 
-    await app.state.http.aclose()
+    try:
+        yield
+    finally:
+        service_logs.emit("info", "gateway", "Gateway service stopping")
+        await app.state.http.aclose()
 
 
 app = FastAPI(
@@ -367,12 +378,23 @@ async def healthz() -> dict[str, str]:
         response = await app.state.http.get(f"{VLLM_BASE_URL}/health")
         response.raise_for_status()
     except httpx.HTTPError as exc:
+        service_logs.emit(
+            "error",
+            "vllm",
+            "Model health check failed",
+            error=type(exc).__name__,
+        )
         raise HTTPException(
             status_code=503,
             detail="vLLM is unavailable",
         ) from exc
 
     return {"status": "ok"}
+
+
+@app.get("/service/logs")
+async def service_log_entries(after: int = 0, limit: int = 200) -> dict[str, Any]:
+    return service_logs.read(after=max(0, after), limit=limit)
 
 
 @app.post(
@@ -455,6 +477,16 @@ async def infer_layout_image(
 
         model_started = time.perf_counter()
 
+        service_logs.emit(
+            "info",
+            "vllm",
+            "Inference started",
+            request_id=request_id,
+            input_width=model_image.width,
+            input_height=model_image.height,
+            queue_ms=queue_ms,
+        )
+
         try:
             response = await app.state.http.post(
                 f"{VLLM_BASE_URL}/v1/chat/completions",
@@ -462,11 +494,24 @@ async def infer_layout_image(
                 json=request_body,
             )
         except httpx.TimeoutException as exc:
+            service_logs.emit(
+                "error",
+                "vllm",
+                "Inference timed out",
+                request_id=request_id,
+            )
             raise HTTPException(
                 status_code=504,
                 detail="Model request timed out",
             ) from exc
         except httpx.HTTPError as exc:
+            service_logs.emit(
+                "error",
+                "vllm",
+                "Model server connection failed",
+                request_id=request_id,
+                error=type(exc).__name__,
+            )
             raise HTTPException(
                 status_code=502,
                 detail="Could not reach model server",
@@ -476,6 +521,14 @@ async def infer_layout_image(
 
     if response.status_code >= 400:
         detail = response.text[:500]
+
+        service_logs.emit(
+            "error",
+            "vllm",
+            "Model server returned an error",
+            request_id=request_id,
+            status_code=response.status_code,
+        )
 
         raise HTTPException(
             status_code=502,
@@ -545,6 +598,20 @@ async def infer_layout_image(
         },
         "warnings": warnings,
     }
+
+    usage = completion.get("usage") or {}
+    service_logs.emit(
+        "info",
+        "vllm",
+        "Inference completed",
+        request_id=request_id,
+        model_ms=model_ms,
+        total_ms=total_ms,
+        blocks=len(blocks),
+        prompt_tokens=usage.get("prompt_tokens"),
+        completion_tokens=usage.get("completion_tokens"),
+        complete=complete,
+    )
 
     return result
 

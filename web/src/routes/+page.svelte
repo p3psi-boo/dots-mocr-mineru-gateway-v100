@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import DOMPurify from 'dompurify';
   import { marked } from 'marked';
   import {
@@ -20,18 +20,22 @@
     Layers3,
     LoaderCircle,
     PanelLeftClose,
+    Pause,
+    Play,
     Plus,
     RefreshCw,
     Settings2,
     Sparkles,
+    Terminal,
     Upload,
     X
   } from '@lucide/svelte';
-  import { getHealth, getTask, getTaskResult, submitTask } from '$lib/api';
+  import { getHealth, getServiceLogs, getTask, getTaskResult, submitTask } from '$lib/api';
   import { loadFile, loadResult, loadTasks, saveFiles, saveResult, saveTasks } from '$lib/storage';
   import type {
     FileResult,
     HealthStatus,
+    ServiceLogEntry,
     SubmitOptions,
     TaskRecord,
     TaskResult,
@@ -39,7 +43,7 @@
     TaskStatus
   } from '$lib/types';
 
-  type View = 'new' | 'tasks' | 'detail';
+  type View = 'new' | 'tasks' | 'logs' | 'detail';
   type ResultTab = 'markdown' | 'json';
 
   const terminalStates: TaskState[] = ['completed', 'failed', 'expired'];
@@ -73,6 +77,14 @@
   let originalUrl = $state('');
   let copied = $state(false);
   let fileInput = $state<HTMLInputElement>();
+  let serviceLogs = $state<ServiceLogEntry[]>([]);
+  let logInstanceId = $state('');
+  let logCursor = $state(0);
+  let logsLoading = $state(false);
+  let logsPaused = $state(false);
+  let logLevel = $state<'all' | ServiceLogEntry['level']>('all');
+  let logQuery = $state('');
+  let logViewport = $state<HTMLDivElement>();
 
   const activeTasks = $derived(tasks.filter((task) => !terminalStates.includes(task.status)));
   const completedTasks = $derived(tasks.filter((task) => task.status === 'completed'));
@@ -86,6 +98,16 @@
     [...tasks].sort(
       (left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
     )
+  );
+  const visibleLogs = $derived(
+    serviceLogs.filter((entry) => {
+      if (logLevel !== 'all' && entry.level !== logLevel) return false;
+      const query = logQuery.trim().toLocaleLowerCase();
+      if (!query) return true;
+      return `${entry.source} ${entry.message} ${JSON.stringify(entry.context)}`
+        .toLocaleLowerCase()
+        .includes(query);
+    })
   );
   const markdownHtml = $derived.by(() => {
     const artifact = selectedArtifact;
@@ -136,6 +158,7 @@
     const url = new URL(window.location.href);
     url.search = '';
     if (nextView === 'tasks') url.searchParams.set('view', 'tasks');
+    if (nextView === 'logs') url.searchParams.set('view', 'logs');
     if (nextView === 'detail') url.searchParams.set('task', taskId);
     history[replace ? 'replaceState' : 'pushState']({}, '', url);
   }
@@ -150,8 +173,10 @@
       await ensureTask(taskId);
       await loadSelectedTask();
     } else {
-      view = url.searchParams.get('view') === 'tasks' ? 'tasks' : 'new';
+      const requestedView = url.searchParams.get('view');
+      view = requestedView === 'tasks' || requestedView === 'logs' ? requestedView : 'new';
       selectedTaskId = '';
+      if (view === 'logs') await refreshLogs(true);
     }
   }
 
@@ -206,8 +231,35 @@
     refreshing = false;
   }
 
+  async function refreshLogs(reset = false): Promise<void> {
+    if (logsLoading || (logsPaused && !reset)) return;
+    logsLoading = true;
+    try {
+      const response = await getServiceLogs(reset ? 0 : logCursor, reset ? 300 : 200);
+      const restarted = logInstanceId !== '' && logInstanceId !== response.instance_id;
+      if (reset || restarted) serviceLogs = response.items;
+      else if (response.items.length) {
+        const known = new Set(serviceLogs.map((entry) => entry.sequence));
+        serviceLogs = [...serviceLogs, ...response.items.filter((entry) => !known.has(entry.sequence))]
+          .slice(-response.capacity);
+      }
+      logInstanceId = response.instance_id;
+      logCursor = response.items.at(-1)?.sequence ?? response.latest_sequence;
+      await tick();
+      if (logViewport && !logsPaused) logViewport.scrollTop = logViewport.scrollHeight;
+    } catch (caught) {
+      error = caught instanceof Error ? caught.message : '日志读取失败';
+    } finally {
+      logsLoading = false;
+    }
+  }
+
   async function refresh(): Promise<void> {
-    await Promise.all([refreshHealth(), refreshTasks()]);
+    await Promise.all([
+      refreshHealth(),
+      refreshTasks(),
+      view === 'logs' ? refreshLogs() : Promise.resolve()
+    ]);
   }
 
   function addFiles(nextFiles: File[]): void {
@@ -319,6 +371,22 @@
     return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   }
 
+  function formatLogTime(value: string): string {
+    return new Intl.DateTimeFormat('zh-CN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      fractionalSecondDigits: 3,
+      hour12: false
+    }).format(new Date(value));
+  }
+
+  function contextEntries(context: Record<string, unknown>): [string, string][] {
+    return Object.entries(context)
+      .filter(([, value]) => value !== null && value !== undefined)
+      .map(([key, value]) => [key, typeof value === 'string' ? value : JSON.stringify(value)]);
+  }
+
   function statusText(status: TaskState): string {
     return {
       pending: '排队中',
@@ -364,6 +432,10 @@
         <Layers3 size={19} strokeWidth={1.8} />
         <span>任务管理</span>
         {#if activeTasks.length}<em>{activeTasks.length}</em>{/if}
+      </button>
+      <button class:active={view === 'logs'} onclick={() => { updateRoute('logs'); void refreshLogs(true); }}>
+        <Terminal size={19} strokeWidth={1.8} />
+        <span>服务日志</span>
       </button>
     </nav>
 
@@ -527,6 +599,74 @@
             {:else}
               <div class="empty-tasks"><Inbox size={30} /><strong>还没有解析任务</strong><span>上传第一份文档后，任务会出现在这里。</span></div>
             {/each}
+          </div>
+        </div>
+      </section>
+    {:else if view === 'logs'}
+      <section class="logs-view">
+        <header class="topbar">
+          <div class="crumb"><span>工作台</span><ChevronRight size={14} /><strong>服务日志</strong></div>
+          <button class="refresh" class:spinning={logsLoading} onclick={() => refreshLogs(true)}><RefreshCw size={16} />刷新</button>
+        </header>
+
+        <div class="logs-content">
+          <div class="logs-heading">
+            <div>
+              <span class="console-prompt">$</span>
+              <div><h1>运行日志</h1><p>网关、任务队列与 vLLM 推理事件</p></div>
+            </div>
+            <div class="log-health" class:offline={!health}>
+              <i></i><span>{health ? 'ALL SYSTEMS OPERATIONAL' : 'SERVICE UNREACHABLE'}</span>
+            </div>
+          </div>
+
+          <div class="log-metrics">
+            <article><span>GATEWAY</span><strong>{health ? 'ONLINE' : 'OFFLINE'}</strong><small>API 服务</small></article>
+            <article><span>MODEL</span><strong>{health?.model_backend ?? '—'}</strong><small>推理后端</small></article>
+            <article><span>QUEUE</span><strong>{health?.queued_tasks ?? 0}</strong><small>{health?.processing_tasks ?? 0} 个处理中</small></article>
+            <article><span>BUFFER</span><strong>{serviceLogs.length}</strong><small>当前可见事件</small></article>
+          </div>
+
+          <div class="log-console">
+            <div class="log-toolbar">
+              <div class="level-filter" aria-label="日志级别">
+                {#each ['all', 'info', 'warning', 'error'] as level}
+                  <button class:active={logLevel === level} onclick={() => (logLevel = level as typeof logLevel)}>{level}</button>
+                {/each}
+              </div>
+              <label class="log-search"><span>FILTER</span><input bind:value={logQuery} placeholder="任务 ID / 来源 / 消息" /></label>
+              <button class="log-action" onclick={() => (logsPaused = !logsPaused)}>
+                {#if logsPaused}<Play size={14} />继续{:else}<Pause size={14} />暂停{/if}
+              </button>
+              <button class="log-action" onclick={() => (serviceLogs = [])}>清空视图</button>
+            </div>
+
+            <div class="log-stream" bind:this={logViewport}>
+              {#each visibleLogs as entry (entry.sequence)}
+                <article class={`log-entry ${entry.level}`}>
+                  <time>{formatLogTime(entry.timestamp)}</time>
+                  <span class="log-level">{entry.level}</span>
+                  <span class="log-source">{entry.source}</span>
+                  <div class="log-message">
+                    <strong>{entry.message}</strong>
+                    {#if contextEntries(entry.context).length}
+                      <div class="log-context">
+                        {#each contextEntries(entry.context) as [key, value]}
+                          <span><b>{key}</b>={value}</span>
+                        {/each}
+                      </div>
+                    {/if}
+                  </div>
+                </article>
+              {:else}
+                <div class="empty-log"><Terminal size={28} /><strong>{logsLoading ? '正在连接日志流' : '没有匹配的日志'}</strong><span>新的服务事件会自动出现在这里</span></div>
+              {/each}
+            </div>
+
+            <footer class="log-footer">
+              <span><i class:paused={logsPaused}></i>{logsPaused ? 'STREAM PAUSED' : 'LIVE · 2.5S POLLING'}</span>
+              <span>INSTANCE {logInstanceId.slice(0, 8) || '—'} · CURSOR {logCursor}</span>
+            </footer>
           </div>
         </div>
       </section>
