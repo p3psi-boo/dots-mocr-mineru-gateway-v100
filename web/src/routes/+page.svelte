@@ -1,7 +1,19 @@
+<script module lang="ts">
+  import { marked } from 'marked';
+  import markedKatex from 'marked-katex-extension';
+  import 'katex/dist/katex.min.css';
+
+  let katexReady = false;
+  export function ensureKatex(): void {
+    if (katexReady) return;
+    marked.use(markedKatex({ throwOnError: false }));
+    katexReady = true;
+  }
+</script>
+
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import DOMPurify from 'dompurify';
-  import { marked } from 'marked';
   import {
     ArrowLeft,
     Check,
@@ -12,10 +24,7 @@
     Code2,
     File as FileIcon,
     FileCheck2,
-    FileClock,
     FileText,
-    Gauge,
-    Image as ImageIcon,
     Inbox,
     Layers3,
     LoaderCircle,
@@ -25,7 +34,6 @@
     Plus,
     RefreshCw,
     Settings2,
-    Sparkles,
     Terminal,
     Upload,
     X
@@ -42,6 +50,8 @@
     TaskState,
     TaskStatus
   } from '$lib/types';
+
+  ensureKatex();
 
   type View = 'new' | 'tasks' | 'logs' | 'detail';
   type ResultTab = 'markdown' | 'json';
@@ -119,7 +129,7 @@
       }
     );
     return DOMPurify.sanitize(marked.parse(source) as string, {
-      USE_PROFILES: { html: true }
+      USE_PROFILES: { html: true, mathMl: true }
     });
   });
   const prettyJson = $derived(
@@ -413,42 +423,41 @@
 </script>
 
 <svelte:head>
-  <title>dots.mocr · 文档解析工作台</title>
+  <title>dots.mocr · 文档解析</title>
 </svelte:head>
 
 <div class="shell" class:detail-mode={view === 'detail'}>
   <aside class="sidebar">
     <button class="brand" onclick={() => updateRoute('new')} aria-label="返回新解析">
       <span class="brand-mark"><span></span><span></span><span></span></span>
-      <span class="brand-copy"><strong>dots.mocr</strong><small>DOCUMENT LAB</small></span>
+      <strong>dots.mocr</strong>
     </button>
 
     <nav aria-label="主导航">
       <button class:active={view === 'new'} onclick={() => updateRoute('new')}>
-        <Plus size={19} strokeWidth={1.8} />
+        <Plus size={18} strokeWidth={1.8} />
         <span>新解析</span>
       </button>
       <button class:active={view === 'tasks'} onclick={() => updateRoute('tasks')}>
-        <Layers3 size={19} strokeWidth={1.8} />
-        <span>任务管理</span>
+        <Layers3 size={18} strokeWidth={1.8} />
+        <span>任务</span>
         {#if activeTasks.length}<em>{activeTasks.length}</em>{/if}
       </button>
       <button class:active={view === 'logs'} onclick={() => { updateRoute('logs'); void refreshLogs(true); }}>
-        <Terminal size={19} strokeWidth={1.8} />
-        <span>服务日志</span>
+        <Terminal size={18} strokeWidth={1.8} />
+        <span>日志</span>
       </button>
     </nav>
 
-    <div class="sidebar-rule"></div>
     <div class="recent-label">最近完成</div>
     <div class="recent-list">
       {#each completedTasks.slice(0, 5) as task (task.task_id)}
         <button onclick={() => openTask(task.task_id)} title={task.original_names.join('、')}>
-          <FileCheck2 size={15} />
+          <FileCheck2 size={14} />
           <span>{task.original_names[0] ?? task.file_names[0]}</span>
         </button>
       {:else}
-        <p>暂无解析记录</p>
+        <p>暂无记录</p>
       {/each}
     </div>
 
@@ -456,7 +465,13 @@
       <span class="signal"></span>
       <div>
         <strong>{health ? '服务在线' : '连接中断'}</strong>
-        <small>{health?.model_backend ?? '等待 API 响应'}</small>
+        <small>
+          {#if health}
+            {health.model_backend} · 队列 {health.queued_tasks} · 解析中 {health.processing_tasks}
+          {:else}
+            等待 API 响应
+          {/if}
+        </small>
       </div>
     </div>
   </aside>
@@ -464,19 +479,7 @@
   <main>
     {#if view === 'new'}
       <section class="new-view">
-        <header class="topbar">
-          <div class="crumb"><span>工作台</span><ChevronRight size={14} /><strong>新解析</strong></div>
-          <div class="capacity">
-            <span><i class="live-dot"></i>{health?.max_concurrent_requests ?? 2} 路并发</span>
-            <span>{health?.processing_window_size ?? 64} 页窗口</span>
-          </div>
-        </header>
-
         <div class="new-content">
-          <div class="eyebrow"><Sparkles size={15} /> DOCUMENT INTELLIGENCE</div>
-          <h1>把文档，变成<br /><em>可用的结构。</em></h1>
-          <p class="lead">上传 PDF 或图片，提交到 MinerU 兼容任务队列；解析完成后并排核对原文件、Markdown 与结构化 JSON。</p>
-
           <div
             class="dropzone"
             role="group"
@@ -487,43 +490,33 @@
             ondragleave={() => (dragging = false)}
             ondrop={onDrop}
           >
-            <div class="drop-grid"></div>
-            <button class="settings-button" onclick={() => (settingsOpen = !settingsOpen)}>
+            <button class="settings-button" onclick={() => (settingsOpen = !settingsOpen)} aria-label="解析设置">
               <Settings2 size={16} />
-              解析设置
             </button>
 
             {#if files.length === 0}
-              <div class="drop-empty">
-                <div class="file-stack" aria-hidden="true">
-                  <span class="sheet image"><ImageIcon size={24} /></span>
-                  <span class="sheet pdf">PDF</span>
-                  <span class="sheet text"><FileText size={24} /></span>
-                </div>
-                <h2>拖入文档，开始解析</h2>
-                <p>PDF · PNG · JPG · WEBP · TIFF · 最多 8 个文件</p>
-                <button class="primary compact" onclick={() => fileInput?.click()}>
-                  <Upload size={17} />选择文件
-                </button>
-              </div>
+              <button class="drop-empty" onclick={() => fileInput?.click()}>
+                <span class="drop-icon"><Upload size={22} strokeWidth={1.8} /></span>
+                <strong>拖入文件，或点击选择</strong>
+                <small>PDF · PNG · JPG · WEBP · TIFF，最多 8 个</small>
+              </button>
             {:else}
               <div class="file-selection">
-                <div class="selection-head">
-                  <div><strong>{files.length} 个文件已就绪</strong><span>将作为同一个解析任务提交</span></div>
-                  <button onclick={() => fileInput?.click()}><Plus size={16} />继续添加</button>
-                </div>
                 <div class="file-list">
                   {#each files as file, index (`${file.name}-${file.size}`)}
                     <div class="file-row">
                       <span class="file-kind">{file.name.split('.').pop()?.slice(0, 4).toUpperCase()}</span>
                       <div><strong>{file.name}</strong><small>{formatSize(file.size)}</small></div>
-                      <button onclick={() => removeFile(index)} aria-label={`移除 ${file.name}`}><X size={16} /></button>
+                      <button onclick={() => removeFile(index)} aria-label={`移除 ${file.name}`}><X size={15} /></button>
                     </div>
                   {/each}
                 </div>
-                <button class="primary submit" disabled={submitting} onclick={createTask}>
-                  {#if submitting}<LoaderCircle class="spin" size={18} />正在提交{:else}<Sparkles size={18} />提交解析{/if}
-                </button>
+                <div class="selection-actions">
+                  <button class="ghost" onclick={() => fileInput?.click()}><Plus size={15} />继续添加</button>
+                  <button class="primary" disabled={submitting} onclick={createTask}>
+                    {#if submitting}<LoaderCircle class="spin" size={16} />提交中{:else}开始解析{/if}
+                  </button>
+                </div>
               </div>
             {/if}
 
@@ -531,7 +524,7 @@
 
             {#if settingsOpen}
               <div class="settings-panel">
-                <div class="settings-title"><span>解析参数</span><button onclick={() => (settingsOpen = false)}><X size={16} /></button></div>
+                <div class="settings-title"><span>解析参数</span><button onclick={() => (settingsOpen = false)} aria-label="关闭"><X size={15} /></button></div>
                 <label>解析方式
                   <select bind:value={options.parseMethod}>
                     <option value="auto">自动判断</option>
@@ -556,125 +549,94 @@
             {/if}
           </div>
 
-          {#if error}<div class="inline-error"><CircleAlert size={16} />{error}</div>{/if}
-
-          <div class="service-strip">
-            <div><Gauge size={17} /><span>队列</span><strong>{health?.queued_tasks ?? 0}</strong></div>
-            <div><LoaderCircle size={17} /><span>解析中</span><strong>{health?.processing_tasks ?? 0}</strong></div>
-            <div><Check size={17} /><span>本机已完成</span><strong>{completedTasks.length}</strong></div>
-          </div>
+          {#if error}<div class="inline-error"><CircleAlert size={15} />{error}</div>{/if}
         </div>
       </section>
     {:else if view === 'tasks'}
       <section class="tasks-view">
-        <header class="topbar">
-          <div class="crumb"><span>工作台</span><ChevronRight size={14} /><strong>任务管理</strong></div>
-          <button class="refresh" class:spinning={refreshing} onclick={refresh}><RefreshCw size={16} />刷新</button>
+        <header class="page-head">
+          <div>
+            <h1>任务</h1>
+            <p>{activeTasks.length} 进行中 · {completedTasks.length} 已完成</p>
+          </div>
+          <div class="head-actions">
+            <button class="ghost refresh" class:spinning={refreshing} onclick={refresh} aria-label="刷新"><RefreshCw size={15} /></button>
+            <button class="primary compact" onclick={() => updateRoute('new')}><Plus size={16} />新解析</button>
+          </div>
         </header>
-        <div class="tasks-content">
-          <div class="section-heading">
-            <div><span class="index">02</span><div><h1>任务管理</h1><p>当前浏览器提交的解析任务</p></div></div>
-            <button class="primary compact" onclick={() => updateRoute('new')}><Plus size={17} />新解析</button>
-          </div>
 
-          <div class="task-summary">
-            <article><FileClock size={19} /><div><span>等待 / 进行中</span><strong>{activeTasks.length}</strong></div></article>
-            <article><FileCheck2 size={19} /><div><span>解析完成</span><strong>{completedTasks.length}</strong></div></article>
-            <article><Inbox size={19} /><div><span>全部记录</span><strong>{tasks.length}</strong></div></article>
-          </div>
-
-          <div class="task-table">
-            <div class="table-head"><span>文件</span><span>状态</span><span>提交时间</span><span>大小</span><span></span></div>
-            {#each visibleTasks as task (task.task_id)}
-              <button class="task-row" onclick={() => openTask(task.task_id)}>
-                <span class="task-file">
-                  <i><FileText size={18} /></i>
-                  <span><strong>{task.original_names[0] ?? task.file_names[0]}</strong><small>{task.original_names.length > 1 ? `另有 ${task.original_names.length - 1} 个文件 · ` : ''}{task.task_id.slice(0, 8)}</small></span>
-                </span>
-                <span><i class={`status ${task.status}`}><b></b>{statusText(task.status)}</i>{#if task.queued_ahead}<small class="queued">前方 {task.queued_ahead} 项</small>{/if}</span>
-                <span class="muted">{formatDate(task.created_at)}</span>
-                <span class="muted">{formatSize(task.sizes.reduce((sum, size) => sum + size, 0))}</span>
-                <span class="row-arrow"><ChevronRight size={17} /></span>
-              </button>
-            {:else}
-              <div class="empty-tasks"><Inbox size={30} /><strong>还没有解析任务</strong><span>上传第一份文档后，任务会出现在这里。</span></div>
-            {/each}
-          </div>
+        <div class="task-table">
+          {#each visibleTasks as task (task.task_id)}
+            <button class="task-row" onclick={() => openTask(task.task_id)}>
+              <span class="task-file">
+                <i><FileText size={17} /></i>
+                <span><strong>{task.original_names[0] ?? task.file_names[0]}</strong><small>{task.original_names.length > 1 ? `${task.original_names.length} 个文件 · ` : ''}{formatDate(task.created_at)} · {formatSize(task.sizes.reduce((sum, size) => sum + size, 0))}</small></span>
+              </span>
+              <span class="task-status">
+                <i class={`status ${task.status}`}><b></b>{statusText(task.status)}</i>
+                {#if task.queued_ahead}<small class="queued">前方 {task.queued_ahead} 项</small>{/if}
+              </span>
+              <span class="row-arrow"><ChevronRight size={16} /></span>
+            </button>
+          {:else}
+            <div class="empty-tasks"><Inbox size={28} /><strong>还没有任务</strong><span>上传文档后会出现在这里</span></div>
+          {/each}
         </div>
       </section>
     {:else if view === 'logs'}
       <section class="logs-view">
-        <header class="topbar">
-          <div class="crumb"><span>工作台</span><ChevronRight size={14} /><strong>服务日志</strong></div>
-          <button class="refresh" class:spinning={logsLoading} onclick={() => refreshLogs(true)}><RefreshCw size={16} />刷新</button>
+        <header class="page-head">
+          <div>
+            <h1>日志</h1>
+            <p class="log-status" class:offline={!health}><i></i>{health ? '服务正常，实时轮询中' : '服务不可达'}</p>
+          </div>
+          <div class="head-actions">
+            <button class="ghost refresh" class:spinning={logsLoading} onclick={() => refreshLogs(true)} aria-label="刷新"><RefreshCw size={15} /></button>
+          </div>
         </header>
 
-        <div class="logs-content">
-          <div class="logs-heading">
-            <div>
-              <span class="console-prompt">$</span>
-              <div><h1>运行日志</h1><p>网关、任务队列与 vLLM 推理事件</p></div>
-            </div>
-            <div class="log-health" class:offline={!health}>
-              <i></i><span>{health ? 'ALL SYSTEMS OPERATIONAL' : 'SERVICE UNREACHABLE'}</span>
-            </div>
-          </div>
-
-          <div class="log-metrics">
-            <article><span>GATEWAY</span><strong>{health ? 'ONLINE' : 'OFFLINE'}</strong><small>API 服务</small></article>
-            <article><span>MODEL</span><strong>{health?.model_backend ?? '—'}</strong><small>推理后端</small></article>
-            <article><span>QUEUE</span><strong>{health?.queued_tasks ?? 0}</strong><small>{health?.processing_tasks ?? 0} 个处理中</small></article>
-            <article><span>BUFFER</span><strong>{serviceLogs.length}</strong><small>当前可见事件</small></article>
-          </div>
-
-          <div class="log-console">
-            <div class="log-toolbar">
-              <div class="level-filter" aria-label="日志级别">
-                {#each ['all', 'info', 'warning', 'error'] as level}
-                  <button class:active={logLevel === level} onclick={() => (logLevel = level as typeof logLevel)}>{level}</button>
-                {/each}
-              </div>
-              <label class="log-search"><span>FILTER</span><input bind:value={logQuery} placeholder="任务 ID / 来源 / 消息" /></label>
-              <button class="log-action" onclick={() => (logsPaused = !logsPaused)}>
-                {#if logsPaused}<Play size={14} />继续{:else}<Pause size={14} />暂停{/if}
-              </button>
-              <button class="log-action" onclick={() => (serviceLogs = [])}>清空视图</button>
-            </div>
-
-            <div class="log-stream" bind:this={logViewport}>
-              {#each visibleLogs as entry (entry.sequence)}
-                <article class={`log-entry ${entry.level}`}>
-                  <time>{formatLogTime(entry.timestamp)}</time>
-                  <span class="log-level">{entry.level}</span>
-                  <span class="log-source">{entry.source}</span>
-                  <div class="log-message">
-                    <strong>{entry.message}</strong>
-                    {#if contextEntries(entry.context).length}
-                      <div class="log-context">
-                        {#each contextEntries(entry.context) as [key, value]}
-                          <span><b>{key}</b>={value}</span>
-                        {/each}
-                      </div>
-                    {/if}
-                  </div>
-                </article>
-              {:else}
-                <div class="empty-log"><Terminal size={28} /><strong>{logsLoading ? '正在连接日志流' : '没有匹配的日志'}</strong><span>新的服务事件会自动出现在这里</span></div>
+        <div class="log-console">
+          <div class="log-toolbar">
+            <div class="level-filter" aria-label="日志级别">
+              {#each ['all', 'info', 'warning', 'error'] as level}
+                <button class:active={logLevel === level} onclick={() => (logLevel = level as typeof logLevel)}>{level}</button>
               {/each}
             </div>
+            <label class="log-search"><input bind:value={logQuery} placeholder="筛选：任务 ID / 来源 / 消息" /></label>
+            <button class="log-action" onclick={() => (logsPaused = !logsPaused)}>
+              {#if logsPaused}<Play size={13} />继续{:else}<Pause size={13} />暂停{/if}
+            </button>
+            <button class="log-action" onclick={() => (serviceLogs = [])}>清空</button>
+          </div>
 
-            <footer class="log-footer">
-              <span><i class:paused={logsPaused}></i>{logsPaused ? 'STREAM PAUSED' : 'LIVE · 2.5S POLLING'}</span>
-              <span>INSTANCE {logInstanceId.slice(0, 8) || '—'} · CURSOR {logCursor}</span>
-            </footer>
+          <div class="log-stream" bind:this={logViewport}>
+            {#each visibleLogs as entry (entry.sequence)}
+              <article class={`log-entry ${entry.level}`}>
+                <time>{formatLogTime(entry.timestamp)}</time>
+                <span class="log-level">{entry.level}</span>
+                <span class="log-source">{entry.source}</span>
+                <div class="log-message">
+                  <strong>{entry.message}</strong>
+                  {#if contextEntries(entry.context).length}
+                    <div class="log-context">
+                      {#each contextEntries(entry.context) as [key, value]}
+                        <span><b>{key}</b>={value}</span>
+                      {/each}
+                    </div>
+                  {/if}
+                </div>
+              </article>
+            {:else}
+              <div class="empty-log"><Terminal size={26} /><strong>{logsLoading ? '正在连接日志流' : '没有匹配的日志'}</strong></div>
+            {/each}
           </div>
         </div>
       </section>
     {:else}
       <section class="detail-view">
         <header class="detail-header">
-          <button class="back" onclick={() => updateRoute('tasks')}><ArrowLeft size={18} /></button>
-          <div class="detail-title"><strong>{selectedTask?.original_names[0] ?? selectedTask?.file_names[0] ?? '解析任务'}</strong><span>{selectedTask?.task_id.slice(0, 8)}</span></div>
+          <button class="back" onclick={() => updateRoute('tasks')} aria-label="返回任务列表"><ArrowLeft size={17} /></button>
+          <div class="detail-title"><strong>{selectedTask?.original_names[0] ?? selectedTask?.file_names[0] ?? '解析任务'}</strong></div>
           {#if selectedTask}<i class={`status ${selectedTask.status}`}><b></b>{statusText(selectedTask.status)}</i>{/if}
           <div class="detail-spacer"></div>
           {#if artifactNames.length > 1}
@@ -693,7 +655,7 @@
               {:else if originalUrl}
                 <img src={originalUrl} alt={originalFile?.name ?? '原始文档'} />
               {:else}
-                <div class="source-empty"><FileIcon size={36} /><strong>原文件不可用</strong><span>此任务不是在当前浏览器提交，或浏览器存储已清理。</span></div>
+                <div class="source-empty"><FileIcon size={32} /><strong>原文件不可用</strong><span>此任务不是在当前浏览器提交，或浏览器存储已清理。</span></div>
               {/if}
             </div>
           </section>
@@ -704,23 +666,29 @@
                 <button class:active={resultTab === 'markdown'} onclick={() => (resultTab = 'markdown')}>Markdown</button>
                 <button class:active={resultTab === 'json'} onclick={() => (resultTab = 'json')}>JSON</button>
               </div>
-              <button class="copy" disabled={!selectedArtifact} onclick={copyResult}>{#if copied}<Check size={16} />已复制{:else}<Clipboard size={16} />复制{/if}</button>
+              <button class="copy" disabled={!selectedArtifact} onclick={copyResult}>
+                <span class="copy-icons" class:copied>
+                  <Clipboard size={15} class="icon-clip" />
+                  <Check size={15} class="icon-check" />
+                </span>
+                {copied ? '已复制' : '复制'}
+              </button>
             </div>
             <div class="result-scroll">
               {#if resultLoading}
-                <div class="result-state"><LoaderCircle class="spin" size={28} /><strong>正在读取结果</strong></div>
+                <div class="result-state"><LoaderCircle class="spin" size={26} /><strong>正在读取结果</strong></div>
               {:else if selectedTask?.status === 'pending'}
-                <div class="result-state queue-art"><Clock3 size={30} /><strong>任务正在排队</strong><span>前方还有 {selectedTask.queued_ahead ?? 0} 项任务</span></div>
+                <div class="result-state"><Clock3 size={28} /><strong>排队中</strong><span>前方还有 {selectedTask.queued_ahead ?? 0} 项任务</span></div>
               {:else if selectedTask?.status === 'processing'}
-                <div class="result-state processing-art"><span class="scanner"></span><LoaderCircle class="spin" size={30} /><strong>正在解析文档</strong><span>页面处理完成后会自动显示结果</span></div>
+                <div class="result-state processing-art"><span class="scanner"></span><LoaderCircle class="spin" size={28} /><strong>正在解析</strong><span>完成后会自动显示结果</span></div>
               {:else if selectedTask?.status === 'failed' || selectedTask?.status === 'expired'}
-                <div class="result-state failed-art"><CircleAlert size={30} /><strong>{statusText(selectedTask.status)}</strong><span>{selectedTask.error}</span></div>
+                <div class="result-state failed-art"><CircleAlert size={28} /><strong>{statusText(selectedTask.status)}</strong><span>{selectedTask.error}</span></div>
               {:else if selectedArtifact && resultTab === 'markdown'}
                 <article class="markdown-body">{@html markdownHtml}</article>
               {:else if selectedArtifact && resultTab === 'json'}
-                <div class="json-view"><div class="json-label"><Code2 size={15} />{selectedArtifactName}.json</div><pre>{prettyJson}</pre></div>
+                <div class="json-view"><div class="json-label"><Code2 size={14} />{selectedArtifactName}.json</div><pre>{prettyJson}</pre></div>
               {:else}
-                <div class="result-state"><PanelLeftClose size={30} /><strong>等待解析结果</strong></div>
+                <div class="result-state"><PanelLeftClose size={28} /><strong>等待解析结果</strong></div>
               {/if}
             </div>
           </section>
