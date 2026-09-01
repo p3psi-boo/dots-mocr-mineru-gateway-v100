@@ -17,7 +17,7 @@ environment-driven.
 - Markdown, content list, middle JSON, model output, extracted image, and ZIP responses
 - API-key protection for the native endpoint
 - Concurrency and upload limits suitable for a 16 GB V100
-- IPv4, IPv6, and Yggdrasil-compatible listeners
+- IPv4 and IPv6 listeners
 - Parameterized systemd and Nginx deployment templates
 - ModelScope download path for mainland China
 
