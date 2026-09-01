@@ -20,6 +20,7 @@ environment-driven.
 - IPv4 and IPv6 listeners
 - Parameterized systemd and Nginx deployment templates
 - Docker Compose deployment with a private vLLM service network
+- SvelteKit single-page WebUI for uploads, queue tracking, and result review
 - ModelScope download path for mainland China
 
 ## Architecture
@@ -171,6 +172,30 @@ curl -X POST http://HOST:8000/v1/ocr/layout \
 The response contains page dimensions, ordered blocks, original-pixel bounding
 boxes, completion state, model usage, timings, and parse warnings.
 
+## WebUI
+
+Open the gateway root URL, for example `http://HOST:8000/`. The SvelteKit SPA
+uses only the MinerU-compatible asynchronous task API and provides:
+
+- drag-and-drop PDF and image uploads
+- MinerU-supported parse options and page ranges
+- queue and processing status polling
+- a browser-local task history
+- side-by-side original, Markdown, and JSON result review
+
+Task identifiers are kept in local storage, while uploaded originals and
+completed results are kept in IndexedDB. This mirrors MinerU's task API, which
+queries tasks by ID and does not expose a global task-list endpoint.
+
+For frontend development:
+
+```bash
+make web-install
+make web-dev
+```
+
+The Vite development server proxies MinerU API calls to `127.0.0.1:8000`.
+
 ## MinerU-compatible API
 
 Implemented protocol v2 routes:
@@ -226,6 +251,7 @@ make test
 
 ```text
 src/dotmocr_api/       Python package
+web/                    SvelteKit SPA
 deploy/systemd/        Rendered-at-install systemd templates
 deploy/nginx/          Nginx template
 docker/                API container image

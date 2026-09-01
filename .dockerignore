@@ -4,6 +4,9 @@
 .env.docker
 .venv
 venv
+**/node_modules
+web/.svelte-kit
+web/build
 __pycache__
 *.py[cod]
 *.egg-info

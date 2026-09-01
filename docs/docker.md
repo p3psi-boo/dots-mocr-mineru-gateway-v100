@@ -7,7 +7,8 @@ host :8000 -> api :8000 -> vllm :8001
 ```
 
 Only the API port is published. The vLLM port is exposed only on the private
-Compose network.
+Compose network. The API image also builds and serves the SvelteKit WebUI at
+the gateway root URL.
 
 ## Prerequisites
 
@@ -37,9 +38,9 @@ DOTOCRM_MODEL_PATH=/opt/dotocrm/models/dots.mocr
 DOTOCRM_CACHE_DIR=/opt/dotocrm/cache
 ```
 
-The example defaults to mainland China mirrors for Docker Hub and Python
-packages. Replace `VLLM_IMAGE`, `PYTHON_IMAGE`, or `UV_INDEX_URL` if a different
-registry or package index is preferred.
+The example defaults to mainland China mirrors for Docker Hub, npm, and Python
+packages. Replace `VLLM_IMAGE`, `PYTHON_IMAGE`, `NODE_IMAGE`, `NPM_REGISTRY`,
+or `UV_INDEX_URL` if a different registry or package index is preferred.
 
 ## Start and verify
 

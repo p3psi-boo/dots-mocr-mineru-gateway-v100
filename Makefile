@@ -1,4 +1,4 @@
-.PHONY: install install-vllm dev test lint format health docker-up docker-down docker-test
+.PHONY: install install-vllm dev test lint format health web-install web-dev web-check web-build docker-up docker-down docker-test
 
 install:
 	./scripts/bootstrap.sh
@@ -20,6 +20,18 @@ format:
 
 health:
 	./scripts/healthcheck.sh
+
+web-install:
+	cd web && npm install
+
+web-dev:
+	cd web && npm run dev
+
+web-check:
+	cd web && npm run check
+
+web-build:
+	cd web && npm run build
 
 docker-up:
 	./scripts/docker-up.sh

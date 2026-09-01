@@ -2,6 +2,8 @@
 .env.docker
 .venv/
 venv/
+node_modules/
+.svelte-kit/
 __pycache__/
 *.py[cod]
 *.egg-info/

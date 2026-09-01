@@ -9,12 +9,14 @@ import os
 import time
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Annotated, Any
 
 import httpx
 import orjson
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.responses import Response
+from fastapi.staticfiles import StaticFiles
 from json_repair import repair_json
 from PIL import Image, ImageOps, UnidentifiedImageError
 
@@ -29,6 +31,8 @@ MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(15 * 1024 * 1024)))
 MAX_IMAGE_PIXELS = int(os.getenv("OCR_MAX_PIXELS", "2200000"))
 MAX_OUTPUT_TOKENS = int(os.getenv("OCR_MAX_OUTPUT_TOKENS", "8192"))
 REQUEST_TIMEOUT_SECONDS = float(os.getenv("OCR_TIMEOUT_SECONDS", "240"))
+DEFAULT_WEBUI_DIR = Path(__file__).resolve().parents[2] / "web" / "build"
+WEBUI_STATIC_DIR = Path(os.getenv("WEBUI_STATIC_DIR", DEFAULT_WEBUI_DIR))
 
 IMAGE_FACTOR = 28
 MIN_IMAGE_PIXELS = 3136
@@ -556,3 +560,10 @@ app.include_router(
         max_upload_bytes=MAX_UPLOAD_BYTES,
     )
 )
+
+if WEBUI_STATIC_DIR.is_dir():
+    app.mount(
+        "/",
+        StaticFiles(directory=WEBUI_STATIC_DIR, html=True),
+        name="webui",
+    )
