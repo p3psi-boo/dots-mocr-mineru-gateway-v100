@@ -61,12 +61,17 @@ nav em { margin-left: auto; min-width: 19px; height: 19px; display: grid; place-
 .recent-list button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
 .recent-list p { margin: 10px 11px; font-size: 12px; color: var(--faint); }
 
-.service-chip { margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; background: white; }
+.service-chip { margin-top: auto; display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: white; }
 .service-chip .signal { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: #3cb371; box-shadow: 0 0 0 4px #e4f7eb; }
+.service-chip .signal { margin-top: 4px; }
 .service-chip.offline .signal { background: #e56161; box-shadow: 0 0 0 4px #feeaea; }
 .service-chip div { display: grid; gap: 2px; min-width: 0; }
 .service-chip strong { font-size: 12px; }
-.service-chip small { color: var(--muted); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.service-chip small { color: var(--muted); font-size: 10.5px; }
+.service-metrics { display: grid; gap: 4px; margin-top: 5px; }
+.service-metrics span { min-width: 0; display: grid; grid-template-columns: 38px minmax(0, 1fr); align-items: baseline; gap: 5px; }
+.service-metrics b { color: var(--faint); font-weight: 600; }
+.service-metrics em { min-width: 0; overflow: hidden; color: #555b54; font-family: var(--mono); font-size: 9.5px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------- shared page header ---------- */
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; width: min(980px, calc(100% - 56px)); margin: 0 auto; padding: 44px 0 22px; }

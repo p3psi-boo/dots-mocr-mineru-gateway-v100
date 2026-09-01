@@ -9,7 +9,15 @@
 <script lang="ts">
   import DOMPurify from 'dompurify';
   import { Check, Clipboard, Download, ExternalLink, Image as ImageIcon, Table2 } from '@lucide/svelte';
-  import { blockLabel, downloadBlob, interactiveBlocks, resolveImage, safeDownloadName } from '$lib/interactive-markdown';
+  import {
+    blockLabel,
+    copyImageCompat,
+    copyTextCompat,
+    downloadBlob,
+    interactiveBlocks,
+    resolveImage,
+    safeDownloadName
+  } from '$lib/interactive-markdown';
   import type { ContentListItem, FileResult } from '$lib/types';
 
   let { artifact, filename }: { artifact: FileResult; filename: string } = $props();
@@ -59,8 +67,7 @@
   }
 
   async function copyText(value: string, message = '已复制'): Promise<void> {
-    await navigator.clipboard.writeText(value);
-    announce(message);
+    announce((await copyTextCompat(value)) ? message : '复制失败');
   }
 
   function tableMatrix(container: HTMLElement): string[][] {
@@ -92,13 +99,8 @@
 
   async function copyImage(event: MouseEvent, source: string): Promise<void> {
     event.stopPropagation();
-    try {
-      const blob = await (await fetch(source)).blob();
-      await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
-      announce('图片已复制');
-    } catch {
-      await copyText(source, '图片地址已复制');
-    }
+    const result = await copyImageCompat(source);
+    announce(result === 'image' ? '图片已复制' : result === 'source' ? '图片地址已复制' : '复制失败');
   }
 
   function openImage(event: MouseEvent, source: string): void {

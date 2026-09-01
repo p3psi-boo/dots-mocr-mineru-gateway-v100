@@ -29,7 +29,7 @@
   import InteractiveMarkdown from '$lib/InteractiveMarkdown.svelte';
   import JsonTree from '$lib/JsonTree.svelte';
   import { getHealth, getServiceLogs, getTask, getTaskResult, submitTask } from '$lib/api';
-  import { downloadBlob, safeDownloadName } from '$lib/interactive-markdown';
+  import { copyTextCompat, downloadBlob, safeDownloadName } from '$lib/interactive-markdown';
   import { loadFile, loadResult, loadTasks, saveFiles, saveResult, saveTasks } from '$lib/storage';
   import type {
     FileResult,
@@ -336,9 +336,12 @@
 
   async function copyResult(): Promise<void> {
     const content = resultTab === 'markdown' ? selectedArtifact?.md_content ?? '' : prettyJson;
-    await navigator.clipboard.writeText(content);
-    copied = true;
+    copied = await copyTextCompat(content);
     window.setTimeout(() => (copied = false), 1600);
+  }
+
+  function minimalPdfUrl(url: string): string {
+    return url ? `${url}#toolbar=0&navpanes=0&scrollbar=1&view=FitH` : '';
   }
 
   function exportMarkdown(): void {
@@ -450,13 +453,15 @@
       <span class="signal"></span>
       <div>
         <strong>{health ? '服务在线' : '连接中断'}</strong>
-        <small>
-          {#if health}
-            {health.model_backend} · 队列 {health.queued_tasks} · 解析中 {health.processing_tasks}
-          {:else}
-            等待 API 响应
-          {/if}
-        </small>
+        {#if health}
+          <small class="service-metrics">
+            <span><b>后端</b><em>{health.model_backend}</em></span>
+            <span><b>队列</b><em>{health.queued_tasks}</em></span>
+            <span><b>解析中</b><em>{health.processing_tasks}</em></span>
+          </small>
+        {:else}
+          <small>等待 API 响应</small>
+        {/if}
       </div>
     </div>
   </aside>
@@ -639,7 +644,7 @@
             <div class="pane-bar"><span>原文件</span><small>{originalFile ? formatSize(originalFile.size) : '仅保存在当前浏览器'}</small></div>
             <div class="source-stage">
               {#if originalUrl && originalFile?.type === 'application/pdf'}
-                <iframe src={originalUrl} title="原始 PDF"></iframe>
+                <iframe src={minimalPdfUrl(originalUrl)} title="原始 PDF（精简视图）"></iframe>
               {:else if originalUrl}
                 <img src={originalUrl} alt={originalFile?.name ?? '原始文档'} />
               {:else}

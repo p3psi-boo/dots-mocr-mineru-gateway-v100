@@ -93,3 +93,76 @@ export function downloadBlob(content: BlobPart, type: string, filename: string):
   anchor.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
+
+export async function copyTextCompat(value: string): Promise<boolean> {
+  if (window.isSecureContext && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch {
+      // HTTP origins commonly reject the modern Clipboard API. Fall through
+      // to the synchronous selection-based path while the click is active.
+    }
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.readOnly = true;
+  textarea.setAttribute('aria-hidden', 'true');
+  textarea.style.position = 'fixed';
+  textarea.style.inset = '0 auto auto -9999px';
+  textarea.style.opacity = '0';
+  document.body.append(textarea);
+  textarea.focus({ preventScroll: true });
+  textarea.select();
+  textarea.setSelectionRange(0, value.length);
+  let copied = false;
+  try {
+    copied = document.execCommand('copy');
+  } catch {
+    copied = false;
+  } finally {
+    textarea.remove();
+  }
+  return copied;
+}
+
+export async function copyImageCompat(source: string): Promise<'image' | 'source' | false> {
+  if (!source) return false;
+  if (window.isSecureContext && navigator.clipboard?.write && typeof ClipboardItem !== 'undefined') {
+    try {
+      const blob = await (await fetch(source)).blob();
+      await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+      return 'image';
+    } catch {
+      // Continue with execCommand for non-secure HTTP deployments.
+    }
+  }
+
+  const container = document.createElement('div');
+  const image = document.createElement('img');
+  container.contentEditable = 'true';
+  container.setAttribute('aria-hidden', 'true');
+  container.style.position = 'fixed';
+  container.style.inset = '0 auto auto -9999px';
+  container.append(image);
+  image.src = source;
+  document.body.append(container);
+
+  const selection = window.getSelection();
+  const range = document.createRange();
+  range.selectNode(image);
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  let copiedImage = false;
+  try {
+    copiedImage = document.execCommand('copy');
+  } catch {
+    copiedImage = false;
+  } finally {
+    selection?.removeAllRanges();
+    container.remove();
+  }
+  if (copiedImage) return 'image';
+  return (await copyTextCompat(source)) ? 'source' : false;
+}
