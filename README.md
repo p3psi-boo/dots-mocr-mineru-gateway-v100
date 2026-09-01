@@ -19,6 +19,7 @@ environment-driven.
 - Concurrency and upload limits suitable for a 16 GB V100
 - IPv4 and IPv6 listeners
 - Parameterized systemd and Nginx deployment templates
+- Docker Compose deployment with a private vLLM service network
 - ModelScope download path for mainland China
 
 ## Architecture
@@ -143,6 +144,22 @@ sudo systemctl start dotocrm-vllm dotocrm-api
 The service templates are rendered with the current repository path and chosen
 service user. They do not require the repository to live at `/opt/dotocrm`.
 
+## Docker Compose deployment
+
+The containerized deployment publishes only the FastAPI gateway; vLLM remains
+on the private Compose network:
+
+```bash
+cp .env.docker.example .env.docker
+chmod 600 .env.docker
+./scripts/docker-up.sh
+./scripts/docker-smoke-test.sh
+```
+
+The default images and Python index use mainland China mirrors. See
+[docs/docker.md](docs/docker.md) for NVIDIA runtime setup, configuration, an
+API-only migration test, and shutdown commands.
+
 ## Native layout OCR API
 
 ```bash
@@ -211,6 +228,8 @@ make test
 src/dotocrm_api/       Python package
 deploy/systemd/        Rendered-at-install systemd templates
 deploy/nginx/          Nginx template
+docker/                API container image
+compose*.yaml          Full and API-only Compose deployments
 scripts/               Bootstrap, model, run, install, and health scripts
 tests/                 Unit and API compatibility tests
 docs/                  Architecture and compatibility notes

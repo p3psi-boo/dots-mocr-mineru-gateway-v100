@@ -16,3 +16,20 @@ jobs:
       - run: uv sync
       - run: uv run ruff check src tests
       - run: uv run pytest
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose files
+        run: |
+          cp .env.docker.example .env.docker
+          docker compose --env-file .env.docker -f compose.yaml config --quiet
+          docker compose --env-file .env.docker -f compose.api-only.yaml config --quiet
+      - name: Build API image
+        run: |
+          docker build \
+            --file docker/Dockerfile.api \
+            --build-arg PYTHON_IMAGE=python:3.12-slim-bookworm \
+            --tag dots-mocr-mineru-gateway:ci \
+            .

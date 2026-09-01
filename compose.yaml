@@ -1,0 +1,109 @@
+name: dots-mocr-mineru-gateway
+
+services:
+  vllm:
+    image: ${VLLM_IMAGE:-docker.1ms.run/vllm/vllm-openai:v0.11.2}
+    restart: unless-stopped
+    ipc: host
+    env_file:
+      - ${DOTOCRM_ENV_FILE:-.env.docker}
+    environment:
+      VLLM_ATTENTION_BACKEND: TRITON_ATTN
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      HF_HOME: /cache/huggingface
+      XDG_CACHE_HOME: /cache
+      TRITON_CACHE_DIR: /cache/triton
+    command:
+      - /models/dots.mocr
+      - --served-model-name
+      - ${VLLM_MODEL:-dots-mocr}
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8001"
+      - --api-key
+      - ${VLLM_API_KEY:?VLLM_API_KEY is required}
+      - --dtype
+      - half
+      - --tensor-parallel-size
+      - "1"
+      - --gpu-memory-utilization
+      - ${VLLM_GPU_MEMORY_UTILIZATION:-0.88}
+      - --max-model-len
+      - ${VLLM_MAX_MODEL_LEN:-16384}
+      - --max-num-seqs
+      - ${VLLM_MAX_NUM_SEQS:-2}
+      - --max-num-batched-tokens
+      - ${VLLM_MAX_BATCHED_TOKENS:-8192}
+      - --enable-chunked-prefill
+      - --no-enable-prefix-caching
+      - --limit-mm-per-prompt
+      - '{"image":1}'
+      - --mm-encoder-attn-backend
+      - XFORMERS
+      - --chat-template-content-format
+      - string
+      - --generation-config
+      - vllm
+      - --trust-remote-code
+    volumes:
+      - ${DOTOCRM_MODEL_PATH:-./models/dots.mocr}:/models/dots.mocr:ro
+      - ${DOTOCRM_CACHE_DIR:-./cache}:/cache
+    expose:
+      - "8001"
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  api:
+    image: ${GATEWAY_IMAGE:-dots-mocr-mineru-gateway:v100}
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+      args:
+        PYTHON_IMAGE: ${PYTHON_IMAGE:-docker.1ms.run/library/python:3.12-slim-bookworm}
+        UV_INDEX_URL: ${UV_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
+        DEBIAN_MIRROR: ${DEBIAN_MIRROR:-https://mirrors.tuna.tsinghua.edu.cn/debian}
+        DEBIAN_SECURITY_MIRROR: ${DEBIAN_SECURITY_MIRROR:-https://mirrors.tuna.tsinghua.edu.cn/debian-security}
+    restart: unless-stopped
+    init: true
+    env_file:
+      - ${DOTOCRM_ENV_FILE:-.env.docker}
+    environment:
+      DOTOCRM_API_HOST: 0.0.0.0
+      DOTOCRM_API_PORT: "8000"
+      DOTOCRM_FORWARDED_ALLOW_IPS: "*"
+      VLLM_BASE_URL: http://vllm:8001
+    ports:
+      - ${DOTOCRM_BIND_ADDRESS:-0.0.0.0}:${DOTOCRM_PUBLIC_PORT:-8000}:8000
+    depends_on:
+      vllm:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777

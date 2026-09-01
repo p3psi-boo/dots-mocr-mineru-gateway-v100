@@ -1,0 +1,36 @@
+name: dots-mocr-mineru-gateway-api-test
+
+services:
+  api:
+    image: ${GATEWAY_IMAGE:-dots-mocr-mineru-gateway:v100}
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+      args:
+        PYTHON_IMAGE: ${PYTHON_IMAGE:-docker.1ms.run/library/python:3.12-slim-bookworm}
+        UV_INDEX_URL: ${UV_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
+        DEBIAN_MIRROR: ${DEBIAN_MIRROR:-https://mirrors.tuna.tsinghua.edu.cn/debian}
+        DEBIAN_SECURITY_MIRROR: ${DEBIAN_SECURITY_MIRROR:-https://mirrors.tuna.tsinghua.edu.cn/debian-security}
+    restart: unless-stopped
+    init: true
+    network_mode: host
+    env_file:
+      - ${DOTOCRM_ENV_FILE:-.env.docker}
+    environment:
+      DOTOCRM_API_HOST: "::"
+      DOTOCRM_API_PORT: ${DOTOCRM_API_TEST_PORT:-18000}
+      DOTOCRM_FORWARDED_ALLOW_IPS: "*"
+      VLLM_BASE_URL: http://[::1]:8001
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://[::1]:${DOTOCRM_API_TEST_PORT:-18000}/healthz', timeout=3)
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777

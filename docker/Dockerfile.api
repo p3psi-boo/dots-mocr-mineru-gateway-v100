@@ -1,0 +1,59 @@
+# syntax=docker/dockerfile:1.7
+
+ARG PYTHON_IMAGE=python:3.12-slim-bookworm
+
+FROM ${PYTHON_IMAGE} AS builder
+
+ARG UV_VERSION=0.12.7
+ARG UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
+
+WORKDIR /build
+
+RUN python -m pip install --no-cache-dir \
+    --index-url "${UV_INDEX_URL}" "uv==${UV_VERSION}"
+
+COPY pyproject.toml uv.lock README.md ./
+COPY src ./src
+
+RUN uv sync --frozen --no-dev --no-editable
+
+
+FROM ${PYTHON_IMAGE} AS runtime
+
+ARG SOURCE_URL=https://github.com/p3psi-boo/dots-mocr-mineru-gateway-v100
+ARG DEBIAN_MIRROR=
+ARG DEBIAN_SECURITY_MIRROR=
+
+LABEL org.opencontainers.image.source="${SOURCE_URL}" \
+      org.opencontainers.image.title="dots.mocr MinerU Gateway" \
+      org.opencontainers.image.description="FastAPI gateway for dots.mocr on vLLM with MinerU-compatible APIs"
+
+ENV PATH=/opt/venv/bin:$PATH \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    DOTOCRM_API_HOST=0.0.0.0 \
+    DOTOCRM_API_PORT=8000
+
+RUN if [ -n "${DEBIAN_SECURITY_MIRROR}" ]; then \
+      sed -i "s|http://deb.debian.org/debian-security|${DEBIAN_SECURITY_MIRROR}|g" \
+        /etc/apt/sources.list.d/debian.sources; \
+    fi \
+    && if [ -n "${DEBIAN_MIRROR}" ]; then \
+      sed -i "s|http://deb.debian.org/debian|${DEBIAN_MIRROR}|g" \
+        /etc/apt/sources.list.d/debian.sources; \
+    fi \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends libgomp1 libstdc++6 \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --uid 10001 --create-home --shell /usr/sbin/nologin gateway
+
+COPY --from=builder /opt/venv /opt/venv
+
+USER gateway
+EXPOSE 8000
+
+CMD ["dotocrm-api"]

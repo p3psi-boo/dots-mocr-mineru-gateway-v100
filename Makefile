@@ -1,4 +1,4 @@
-.PHONY: install install-vllm dev test lint format health
+.PHONY: install install-vllm dev test lint format health docker-up docker-down docker-test
 
 install:
 	./scripts/bootstrap.sh
@@ -20,3 +20,12 @@ format:
 
 health:
 	./scripts/healthcheck.sh
+
+docker-up:
+	./scripts/docker-up.sh
+
+docker-down:
+	./scripts/docker-down.sh
+
+docker-test:
+	./scripts/docker-smoke-test.sh
