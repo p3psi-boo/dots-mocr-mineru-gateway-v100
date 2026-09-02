@@ -3,7 +3,6 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON_VERSION="${DOTOCRM_PYTHON_VERSION:-3.12}"
-export UV_DEFAULT_INDEX="${UV_DEFAULT_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}"
 
 if ! command -v uv >/dev/null 2>&1; then
   echo "uv is required: https://docs.astral.sh/uv/getting-started/installation/" >&2

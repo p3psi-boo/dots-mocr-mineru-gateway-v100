@@ -8,7 +8,9 @@
 
 <script lang="ts">
   import DOMPurify from 'dompurify';
-  import { Check, Clipboard, Download, ExternalLink, Image as ImageIcon, Table2 } from '@lucide/svelte';
+  import { tick } from 'svelte';
+  import { Check, Clipboard, Download, ExternalLink, Image as ImageIcon } from '@lucide/svelte';
+  import { prefersReducedMotion } from '$lib/bbox';
   import {
     blockLabel,
     copyImageCompat,
@@ -20,10 +22,20 @@
   } from '$lib/interactive-markdown';
   import type { ContentListItem, FileResult } from '$lib/types';
 
-  let { artifact, filename }: { artifact: FileResult; filename: string } = $props();
-  let selectedIndex = $state<number | null>(null);
+  let {
+    artifact,
+    filename,
+    selectedIndex = $bindable<number | null>(null)
+  }: {
+    artifact: FileResult;
+    filename: string;
+    selectedIndex?: number | null;
+  } = $props();
+
   let actionState = $state('');
   let actionTimer: number | undefined;
+  let skipScroll = false;
+  let root = $state<HTMLDivElement>();
 
   const blocks = $derived(interactiveBlocks(artifact));
 
@@ -51,13 +63,8 @@
   }
 
   function select(index: number): void {
+    skipScroll = true;
     selectedIndex = selectedIndex === index ? null : index;
-  }
-
-  function keyboardSelect(event: KeyboardEvent, index: number): void {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    event.preventDefault();
-    select(index);
   }
 
   function announce(message: string): void {
@@ -79,7 +86,7 @@
   }
 
   function quoteCsv(value: string): string {
-    return /[\",\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
+    return /[",\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
   }
 
   async function copyTable(event: MouseEvent): Promise<void> {
@@ -116,23 +123,47 @@
   function textFor(block: ContentListItem): string {
     return typeof block.text === 'string' ? block.text : '';
   }
+
+  $effect(() => {
+    const index = selectedIndex;
+    if (index === null || !root) return;
+    if (skipScroll) {
+      skipScroll = false;
+      return;
+    }
+    void tick().then(() => {
+      root
+        ?.querySelector(`[data-block-index="${index}"]`)
+        ?.scrollIntoView({ block: 'nearest', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+    });
+  });
 </script>
 
-<div class="interactive-markdown" aria-label="交互式 Markdown 文档" role="listbox">
+<div
+  class="interactive-markdown"
+  bind:this={root}
+  aria-label="交互式 Markdown 文档"
+>
   {#if blocks.length}
     {#each blocks as block, index (`${block.page_idx ?? 0}-${index}`)}
       {@const type = String(block.type ?? 'text')}
       {@const selected = selectedIndex === index}
       {@const imageSource = type === 'image' ? resolveImage(artifact, String(block.img_path ?? '')) : ''}
-      <div
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_click_events_have_key_events -->
+      <article
         class="interactive-block type-{type}"
         class:selected
-        role="option"
-        tabindex="0"
-        aria-label={`${blockLabel(type)}，第 ${(block.page_idx ?? 0) + 1} 页`}
-        aria-selected={selected}
+        data-block-index={index}
+        data-page={block.page_idx ?? 0}
+        id={`md-block-${index}`}
+        aria-label={`${blockLabel(type)}，第 ${(block.page_idx ?? 0) + 1} 页${selected ? '，已选中' : ''}`}
         onclick={() => select(index)}
-        onkeydown={(event) => keyboardSelect(event, index)}
+        onkeydown={(event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          if ((event.target as HTMLElement).closest('button, a, input, textarea')) return;
+          event.preventDefault();
+          select(index);
+        }}
       >
         <div class="element-meta" aria-hidden={!selected}>
           <span>{blockLabel(type)}</span>
@@ -141,7 +172,7 @@
 
         {#if type === 'text'}
           <div class="element-actions">
-            <button title="复制文本" aria-label="复制文本" onclick={(event) => copyBlockText(event, textFor(block))}><Clipboard size={14} />复制文本</button>
+            <button type="button" title="复制文本" aria-label="复制文本" onclick={(event) => copyBlockText(event, textFor(block))}><Clipboard size={14} />复制文本</button>
           </div>
           {#if block.text_level === 1}
             <h1>{@html richText(textFor(block), true)}</h1>
@@ -160,16 +191,16 @@
           </ul>
         {:else if type === 'table'}
           <div class="element-actions">
-            <button title="复制表格" aria-label="复制表格" onclick={copyTable}><Clipboard size={14} />复制</button>
-            <button title="导出 CSV" aria-label="导出 CSV" onclick={(event) => exportTable(event, index)}><Download size={14} />导出 CSV</button>
+            <button type="button" title="复制表格" aria-label="复制表格" onclick={copyTable}><Clipboard size={14} />复制</button>
+            <button type="button" title="导出 CSV" aria-label="导出 CSV" onclick={(event) => exportTable(event, index)}><Download size={14} />导出 CSV</button>
           </div>
           <div class="table-shell">{@html tableHtml(String(block.table_body ?? block.text ?? ''))}</div>
         {:else if type === 'equation'}
           <div class="equation">{@html equationHtml(textFor(block))}</div>
         {:else if type === 'image'}
           <div class="element-actions">
-            <button disabled={!imageSource} title="复制图片" aria-label="复制图片" onclick={(event) => copyImage(event, imageSource)}><ImageIcon size={14} />复制图片</button>
-            <button disabled={!imageSource} title="在新标签页打开图片" aria-label="在新标签页打开图片" onclick={(event) => openImage(event, imageSource)}><ExternalLink size={14} />打开</button>
+            <button type="button" disabled={!imageSource} title="复制图片" aria-label="复制图片" onclick={(event) => copyImage(event, imageSource)}><ImageIcon size={14} />复制图片</button>
+            <button type="button" disabled={!imageSource} title="在新标签页打开图片" aria-label="在新标签页打开图片" onclick={(event) => openImage(event, imageSource)}><ExternalLink size={14} />打开</button>
           </div>
           {#if imageSource}
             <img src={imageSource} alt={String(block.alt ?? `文档图片 ${index + 1}`)} />
@@ -181,12 +212,12 @@
         {:else}
           <div class="rich-text">{@html richText(textFor(block))}</div>
         {/if}
-      </div>
+      </article>
     {/each}
   {:else if artifact.md_content}
-    <div class="interactive-block fallback-markdown">
+    <article class="interactive-block fallback-markdown" role="listitem">
       <div class="rich-text">{@html richText(artifact.md_content)}</div>
-    </div>
+    </article>
   {:else}
     <div class="interactive-empty">JSON 结果中没有可渲染的元素</div>
   {/if}

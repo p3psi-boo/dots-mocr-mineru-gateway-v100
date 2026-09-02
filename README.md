@@ -21,7 +21,7 @@ environment-driven.
 - Parameterized systemd and Nginx deployment templates
 - Docker Compose deployment with a private vLLM service network
 - SvelteKit single-page WebUI for uploads, queue tracking, and result review
-- ModelScope download path for mainland China
+- ModelScope model download
 
 ## Architecture
 
@@ -44,10 +44,10 @@ See [docs/architecture.md](docs/architecture.md) for the runtime details.
 
 ## Requirements
 
-- Linux
-- [uv](https://docs.astral.sh/uv/) for Python and dependency management
-- Python 3.10–3.13 for the gateway; `.python-version` selects Python 3.12,
-  which is required by the tested vLLM runtime
+- x86_64 Linux
+- [Nix](https://nixos.org/) with flakes for the local development shell
+- Python 3.10–3.13 for the gateway; the flake and `.python-version` select
+  Python 3.12, which is required by the tested vLLM runtime
 - NVIDIA GPU and driver supported by the selected PyTorch/vLLM build
 - Nginx and systemd for the production deployment
 - Approximately 6 GB for model weights, plus Python and compilation caches
@@ -71,16 +71,13 @@ PUBLIC_API_KEY=generate-a-random-public-key
 DOTOCRM_MODEL_PATH=/opt/dotocrm/models/dots.mocr
 ```
 
-### 2. Install uv and create the environment
+### 2. Enter the development environment
+
+The repository flake provides Python 3.12, uv, Node.js 24, and Make. With
+direnv, `direnv allow` loads it automatically. Otherwise:
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-If that installer is slow in mainland China:
-
-```bash
-python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple uv
+nix develop
 ```
 
 API only:
@@ -92,13 +89,15 @@ API only:
 API plus the tested vLLM runtime:
 
 ```bash
-UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple \
-  ./scripts/bootstrap.sh --with-vllm
+./scripts/bootstrap.sh --with-vllm
 ```
 
 `uv.lock` pins the complete dependency graph. The bootstrap script creates
-`.venv` from that lock and uses Python 3.12 unless overridden with
+`.venv` from that lock using the flake's Python 3.12 unless overridden with
 `DOTOCRM_PYTHON_VERSION`.
+
+Without Nix, install [uv](https://docs.astral.sh/uv/) and Node.js 24 yourself,
+then run the same bootstrap script.
 
 ### 3. Download dots.mocr through ModelScope
 
@@ -157,8 +156,7 @@ chmod 600 .env.docker
 ./scripts/docker-smoke-test.sh
 ```
 
-The default images and Python index use mainland China mirrors. See
-[docs/docker.md](docs/docker.md) for NVIDIA runtime setup, configuration, an
+See [docs/docker.md](docs/docker.md) for NVIDIA runtime setup, configuration, an
 API-only migration test, and shutdown commands.
 
 ## Native layout OCR API

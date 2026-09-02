@@ -1,3 +1,4 @@
+import asyncio
 import io
 import json
 import time
@@ -149,3 +150,38 @@ def test_zip_response_contains_requested_artifacts_and_original():
     assert "fixture/vlm/fixture.md" in names
     assert "fixture/vlm/fixture_content_list.json" in names
     assert "fixture/vlm/fixture_origin.png" in names
+
+
+def test_cancel_running_task():
+    async def slow_inference(image, *, request_id=None):
+        await asyncio.sleep(20)
+        return await fake_inference(image, request_id=request_id)
+
+    app = FastAPI()
+    app.include_router(
+        create_mineru_router(
+            infer_layout_image=slow_inference,
+            decode_image=decode_image,
+            max_upload_bytes=2_000_000,
+        )
+    )
+    with TestClient(app) as client:
+        submitted = client.post(
+            "/tasks",
+            files={"files": ("fixture.png", png_bytes(), "image/png")},
+        )
+        assert submitted.status_code == 202
+        task_id = submitted.json()["task_id"]
+        assert client.get(f"/tasks/{task_id}").json()["status"] in {
+            "pending",
+            "processing",
+        }
+
+        cancelled = client.post(f"/tasks/{task_id}/cancel")
+        assert cancelled.status_code == 200
+        payload = cancelled.json()
+        assert payload["status"] == "failed"
+        assert payload["error"] == "Task cancelled"
+
+        again = client.post(f"/tasks/{task_id}/cancel")
+        assert again.status_code == 409

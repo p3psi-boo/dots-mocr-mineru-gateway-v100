@@ -43,7 +43,7 @@ export async function submitTask(
   form.append('return_content_list', 'true');
   form.append('return_images', String(options.images));
   form.append('start_page_id', String(options.startPage));
-  form.append('end_page_id', String(options.endPage));
+  form.append('end_page_id', String(options.endPage ?? 99999));
 
   return json(
     await fetch('/tasks', {
@@ -59,6 +59,12 @@ export async function getTask(taskId: string): Promise<TaskStatus> {
 
 export async function getTaskResult(taskId: string): Promise<TaskResult> {
   return json(await fetch(`/tasks/${encodeURIComponent(taskId)}/result`));
+}
+
+export async function cancelTask(taskId: string): Promise<TaskStatus> {
+  return json(
+    await fetch(`/tasks/${encodeURIComponent(taskId)}/cancel`, { method: 'POST' })
+  );
 }
 
 export async function getServiceLogs(after = 0, limit = 200): Promise<ServiceLogResponse> {

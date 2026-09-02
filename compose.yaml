@@ -2,7 +2,7 @@ name: dots-mocr-mineru-gateway
 
 services:
   vllm:
-    image: ${VLLM_IMAGE:-docker.1ms.run/vllm/vllm-openai:v0.11.2}
+    image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.11.2}
     restart: unless-stopped
     ipc: host
     env_file:
@@ -76,12 +76,10 @@ services:
       context: .
       dockerfile: docker/Dockerfile.api
       args:
-        PYTHON_IMAGE: ${PYTHON_IMAGE:-docker.1ms.run/library/python:3.12-slim-bookworm}
-        NODE_IMAGE: ${NODE_IMAGE:-docker.1ms.run/library/node:24-bookworm-slim}
-        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
-        UV_INDEX_URL: ${UV_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
-        DEBIAN_MIRROR: ${DEBIAN_MIRROR:-https://mirrors.tuna.tsinghua.edu.cn/debian}
-        DEBIAN_SECURITY_MIRROR: ${DEBIAN_SECURITY_MIRROR:-https://mirrors.tuna.tsinghua.edu.cn/debian-security}
+        PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.12-slim-bookworm}
+        NODE_IMAGE: ${NODE_IMAGE:-node:24-bookworm-slim}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
+        UV_INDEX_URL: ${UV_INDEX_URL:-https://pypi.org/simple}
     restart: unless-stopped
     init: true
     env_file:

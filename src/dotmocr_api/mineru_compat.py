@@ -127,6 +127,7 @@ class ParseTask:
     submit_order: int = 0
     artifacts: dict[str, FileArtifacts] = field(default_factory=dict)
     done: asyncio.Event = field(default_factory=asyncio.Event)
+    cancel_requested: bool = False
 
     def status_payload(
         self,
@@ -539,6 +540,7 @@ class TaskManager:
         self.infer_layout_image = infer_layout_image
         self.decode_image = decode_image
         self.tasks: dict[str, ParseTask] = {}
+        self._runners: dict[str, asyncio.Task[None]] = {}
         self._order = 0
         self._semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
@@ -552,6 +554,7 @@ class TaskManager:
         ]
         for task_id in expired:
             self.tasks.pop(task_id, None)
+            self._runners.pop(task_id, None)
 
     def submit(self, options: ParseOptions, assets: list[UploadAsset]) -> ParseTask:
         self.cleanup()
@@ -571,13 +574,42 @@ class TaskManager:
             files=len(assets),
             backend=options.backend,
         )
-        asyncio.create_task(self._run(task), name=f"mineru-compat-{task.task_id}")
+        runner = asyncio.create_task(
+            self._run(task), name=f"mineru-compat-{task.task_id}"
+        )
+        self._runners[task.task_id] = runner
+        runner.add_done_callback(
+            lambda _done, task_id=task.task_id: self._runners.pop(task_id, None)
+        )
+        return task
+
+    def cancel(self, task_id: str) -> ParseTask:
+        self.cleanup()
+        task = self.tasks.get(task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail="Task not found")
+        if task.status not in {"pending", "processing"}:
+            raise HTTPException(status_code=409, detail="Task is not cancellable")
+        task.cancel_requested = True
+        runner = self._runners.get(task_id)
+        if runner is not None and not runner.done():
+            runner.cancel()
+        task.status = "failed"
+        task.error = "Task cancelled"
+        task.completed_at = utc_now_iso()
+        task.done.set()
         return task
 
     async def _run(self, task: ParseTask) -> None:
         try:
             async with self._semaphore:
+                if task.cancel_requested:
+                    return
                 task.status = "processing"
+                if task.cancel_requested:
+                    task.status = "failed"
+                    task.error = "Task cancelled"
+                    return
                 task.started_at = utc_now_iso()
                 service_logs.emit(
                     "info",
@@ -821,6 +853,18 @@ def create_mineru_router(
         if task.options.response_format_zip:
             return zip_response(task, request, synchronous=True)
         return json_result_response(task, request, synchronous=True)
+
+    @router.post(
+        "/tasks/{task_id}/cancel",
+        name="mineru_cancel_task",
+        summary="Cancel a queued or running task",
+        description="Stops a pending or processing task and marks it as failed.",
+    )
+    async def cancel_task(task_id: str, request: Request) -> Response:
+        task = manager.cancel(task_id)
+        payload = task.status_payload(request, manager.queued_ahead(task))
+        payload["message"] = "Task cancelled"
+        return json_response(payload)
 
     @router.get(
         "/tasks/{task_id}",

@@ -17,6 +17,7 @@ export interface TaskStatus {
 export interface TaskRecord extends TaskStatus {
   original_names: string[];
   sizes: number[];
+  options?: SubmitOptions;
 }
 
 export interface FileResult {
@@ -65,8 +66,16 @@ export interface SubmitOptions {
   table: boolean;
   images: boolean;
   startPage: number;
-  endPage: number;
+  endPage: number | null;
 }
+
+export interface Toast {
+  id: number;
+  kind: 'error' | 'success' | 'info';
+  message: string;
+}
+
+export type ThemePreference = 'light' | 'dark' | 'system';
 
 export interface ServiceLogEntry {
   sequence: number;

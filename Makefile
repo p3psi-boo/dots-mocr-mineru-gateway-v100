@@ -1,4 +1,7 @@
-.PHONY: install install-vllm dev test lint format health web-install web-dev web-check web-build docker-up docker-down docker-test
+.PHONY: install install-vllm dev test lint format health web-install web-dev web-check web-build docker-up docker-down docker-test shell
+
+shell:
+	nix develop
 
 install:
 	./scripts/bootstrap.sh
@@ -13,10 +16,10 @@ test:
 	uv run pytest
 
 lint:
-	uv run ruff check src tests
+	ruff check src tests
 
 format:
-	uv run ruff format src tests
+	ruff format src tests
 
 health:
 	./scripts/healthcheck.sh

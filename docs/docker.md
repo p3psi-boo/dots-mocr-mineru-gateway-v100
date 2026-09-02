@@ -21,7 +21,7 @@ Verify GPU access before starting:
 
 ```bash
 docker run --rm --gpus all \
-  docker.1ms.run/nvidia/cuda:12.8.1-base-ubuntu22.04 nvidia-smi
+  nvidia/cuda:12.8.1-base-ubuntu22.04 nvidia-smi
 ```
 
 ## Configuration
@@ -38,9 +38,9 @@ DOTOCRM_MODEL_PATH=/opt/dotocrm/models/dots.mocr
 DOTOCRM_CACHE_DIR=/opt/dotocrm/cache
 ```
 
-The example defaults to mainland China mirrors for Docker Hub, npm, and Python
-packages. Replace `VLLM_IMAGE`, `PYTHON_IMAGE`, `NODE_IMAGE`, `NPM_REGISTRY`,
-or `UV_INDEX_URL` if a different registry or package index is preferred.
+Images and package indexes default to Docker Hub, npmjs, and PyPI. Override
+`VLLM_IMAGE`, `PYTHON_IMAGE`, `NODE_IMAGE`, `NPM_REGISTRY`, or `UV_INDEX_URL`
+only if you need a different registry.
 
 ## Start and verify
 

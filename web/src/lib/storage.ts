@@ -1,8 +1,20 @@
-import type { TaskRecord, TaskResult } from './types';
+import type { SubmitOptions, TaskRecord, TaskResult, ThemePreference } from './types';
 
 const TASKS_KEY = 'dotmocr.tasks.v1';
+const OPTIONS_KEY = 'dotmocr.options.v2';
+const THEME_KEY = 'dotmocr.theme.v1';
 const DB_NAME = 'dotmocr-webui';
 const DB_VERSION = 1;
+
+export const defaultOptions: SubmitOptions = {
+  lang: 'ch',
+  parseMethod: 'auto',
+  formula: true,
+  table: true,
+  images: true,
+  startPage: 0,
+  endPage: null
+};
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -43,6 +55,17 @@ async function get<T>(storeName: string, key: IDBValidKey): Promise<T | undefine
   return value;
 }
 
+async function del(storeName: string, key: IDBValidKey): Promise<void> {
+  const database = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(storeName, 'readwrite');
+    transaction.objectStore(storeName).delete(key);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+  });
+  database.close();
+}
+
 export function loadTasks(): TaskRecord[] {
   try {
     return JSON.parse(localStorage.getItem(TASKS_KEY) ?? '[]') as TaskRecord[];
@@ -52,7 +75,65 @@ export function loadTasks(): TaskRecord[] {
 }
 
 export function saveTasks(tasks: TaskRecord[]): void {
-  localStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
+  try {
+    localStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
+  } catch {
+    throw new Error('本地存储已满，请清理已完成的任务');
+  }
+}
+
+export function loadOptions(): SubmitOptions {
+  try {
+    const raw = JSON.parse(localStorage.getItem(OPTIONS_KEY) ?? 'null') as Partial<SubmitOptions> | null;
+    if (!raw || typeof raw !== 'object') return { ...defaultOptions };
+    return {
+      lang: raw.lang === 'en' ? 'en' : 'ch',
+      parseMethod: raw.parseMethod === 'ocr' || raw.parseMethod === 'txt' ? raw.parseMethod : 'auto',
+      formula: raw.formula !== false,
+      table: raw.table !== false,
+      images: raw.images !== false,
+      startPage: typeof raw.startPage === 'number' && raw.startPage >= 0 ? raw.startPage : 0,
+      endPage: typeof raw.endPage === 'number' && raw.endPage >= 0 ? raw.endPage : null
+    };
+  } catch {
+    return { ...defaultOptions };
+  }
+}
+
+export function saveOptions(options: SubmitOptions): void {
+  try {
+    localStorage.setItem(OPTIONS_KEY, JSON.stringify(options));
+  } catch {
+    // Preferences are non-critical if quota is exhausted.
+  }
+}
+
+export function loadTheme(): ThemePreference {
+  const value = localStorage.getItem(THEME_KEY);
+  if (value === 'light' || value === 'dark' || value === 'system') return value;
+  return 'system';
+}
+
+export function saveTheme(theme: ThemePreference): void {
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch {
+    // Theme preference is non-critical if quota is exhausted.
+  }
+}
+
+export function resolvedTheme(theme: ThemePreference): 'light' | 'dark' {
+  if (theme === 'light' || theme === 'dark') return theme;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+export function applyTheme(theme: ThemePreference): void {
+  const resolved = resolvedTheme(theme);
+  document.documentElement.dataset.theme = resolved;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute(
+    'content',
+    resolved === 'dark' ? '#121412' : '#f6f6f3'
+  );
 }
 
 export async function saveFiles(taskId: string, files: File[]): Promise<void> {
@@ -69,4 +150,12 @@ export function saveResult(taskId: string, result: TaskResult): Promise<void> {
 
 export function loadResult(taskId: string): Promise<TaskResult | undefined> {
   return get<TaskResult>('results', taskId);
+}
+
+export async function deleteTaskAssets(taskId: string, fileCount: number): Promise<void> {
+  const count = Math.max(fileCount, 1);
+  await Promise.all([
+    ...Array.from({ length: count }, (_, index) => del('files', `${taskId}:${index}`)),
+    del('results', taskId)
+  ]);
 }

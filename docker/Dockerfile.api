@@ -3,7 +3,7 @@ ARG NODE_IMAGE=node:24-bookworm-slim
 
 FROM ${NODE_IMAGE} AS web-builder
 
-ARG NPM_REGISTRY=https://registry.npmmirror.com
+ARG NPM_REGISTRY=https://registry.npmjs.org
 
 WORKDIR /web
 
@@ -16,7 +16,7 @@ RUN npm run build
 FROM ${PYTHON_IMAGE} AS builder
 
 ARG UV_VERSION=0.12.7
-ARG UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ARG UV_INDEX_URL=https://pypi.org/simple
 
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
     UV_COMPILE_BYTECODE=1 \

@@ -34,13 +34,15 @@ function fromModelOutput(artifact: FileResult): ContentListItem[] {
   return parsed.flatMap((page, pageIndex) => {
     if (!isBlock(page) || !Array.isArray(page.blocks)) return [];
     const pageIdx = typeof page.page_idx === 'number' ? page.page_idx : pageIndex;
+    const pageWidth = typeof page.width === 'number' ? page.width : 0;
+    const pageHeight = typeof page.height === 'number' ? page.height : 0;
     return page.blocks.filter(isBlock).map((block) => {
       const category = String(block.category ?? 'Text');
       const type = categoryTypes[category] ?? 'text';
       const item: ContentListItem = {
         type,
         page_idx: pageIdx,
-        bbox: Array.isArray(block.bbox) ? block.bbox.filter((value): value is number => typeof value === 'number') : undefined,
+        bbox: normalizeBbox(block.bbox, pageWidth, pageHeight),
         text: String(block.text ?? '')
       };
       if (category === 'Title') item.text_level = 1;
@@ -52,6 +54,20 @@ function fromModelOutput(artifact: FileResult): ContentListItem[] {
   });
 }
 
+function normalizeBbox(value: unknown, width: number, height: number): number[] | undefined {
+  if (!Array.isArray(value) || value.length !== 4) return undefined;
+  const bbox = value.filter((item): item is number => typeof item === 'number');
+  if (bbox.length !== 4) return undefined;
+  const max = Math.max(...bbox);
+  if (max <= 1000 || width <= 0 || height <= 0) return bbox;
+  return [
+    (bbox[0] * 1000) / width,
+    (bbox[1] * 1000) / height,
+    (bbox[2] * 1000) / width,
+    (bbox[3] * 1000) / height
+  ];
+}
+
 export function interactiveBlocks(artifact: FileResult): ContentListItem[] {
   const contentList = parseJson(artifact.content_list);
   if (Array.isArray(contentList)) {
@@ -59,6 +75,35 @@ export function interactiveBlocks(artifact: FileResult): ContentListItem[] {
     if (blocks.length) return blocks;
   }
   return fromModelOutput(artifact);
+}
+
+export interface OutlineEntry {
+  index: number;
+  page: number;
+  label: string;
+  level: number;
+}
+
+export function documentOutline(blocks: ContentListItem[]): OutlineEntry[] {
+  const entries: OutlineEntry[] = [];
+  let lastPage = -1;
+  blocks.forEach((block, index) => {
+    const page = block.page_idx ?? 0;
+    if (page !== lastPage) {
+      entries.push({ index, page, label: `第 ${page + 1} 页`, level: 0 });
+      lastPage = page;
+    }
+    const level = typeof block.text_level === 'number' ? block.text_level : 0;
+    if (level >= 1 && block.text) {
+      entries.push({
+        index,
+        page,
+        label: String(block.text).replace(/\s+/g, ' ').trim().slice(0, 48),
+        level
+      });
+    }
+  });
+  return entries;
 }
 
 export function blockLabel(type: string): string {

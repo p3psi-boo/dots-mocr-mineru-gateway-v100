@@ -141,7 +141,7 @@
       <aside class="api-toc">
         <label class="api-search">
           <Search size={14} />
-          <input bind:value={query} placeholder="搜索端点" aria-label="搜索 API 端点" />
+          <input id="api-search-input" bind:value={query} placeholder="搜索端点" aria-label="搜索 API 端点" />
         </label>
         <div class="api-toc-label">接口分组</div>
         {#each groups as group}
@@ -167,7 +167,7 @@
           <section class="api-group" id={`api-${group.tag.replaceAll(' ', '-').toLowerCase()}`}>
             <div class="api-group-heading">
               <div><h2>{group.tag}</h2>{#if group.description}<p>{group.description}</p>{/if}</div>
-              <span>{group.operations.length} endpoints</span>
+              <span>{group.operations.length} 个端点</span>
             </div>
 
             <div class="api-operation-list">
@@ -245,7 +245,7 @@
 
         {#if schemas.length && !query}
           <section class="api-group" id="api-schemas">
-            <div class="api-group-heading"><div><h2>数据模型</h2><p>OpenAPI components 中定义的复用结构。</p></div><span>{schemas.length} schemas</span></div>
+            <div class="api-group-heading"><div><h2>数据模型</h2><p>OpenAPI components 中定义的复用结构。</p></div><span>{schemas.length} 个模型</span></div>
             <div class="api-schema-list">
               {#each schemas as [name, schema]}
                 <details class="api-schema">
