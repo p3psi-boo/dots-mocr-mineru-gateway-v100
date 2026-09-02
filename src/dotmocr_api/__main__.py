@@ -9,7 +9,7 @@ def main() -> None:
     uvicorn.run(
         "dotmocr_api.app:app",
         host=os.getenv("DOTOCRM_API_HOST", "::"),
-        port=int(os.getenv("DOTOCRM_API_PORT", "8010")),
+        port=int(os.getenv("DOTOCRM_API_PORT", "8000")),
         workers=int(os.getenv("DOTOCRM_API_WORKERS", "1")),
         proxy_headers=True,
         forwarded_allow_ips=os.getenv("DOTOCRM_FORWARDED_ALLOW_IPS", "::1"),

@@ -2,13 +2,12 @@
 
 ## Processes
 
-The deployment consists of three independent processes:
+The deployment consists of two independent processes:
 
 1. **vLLM** loads dots.mocr and exposes an OpenAI-compatible API.
 2. **FastAPI gateway** validates uploads, resizes pages, calls vLLM, repairs and
-   normalizes model JSON, and renders native or MinerU-compatible responses.
-3. **Nginx** provides the public IPv4/IPv6 listener and preserves forwarded host
-   information used by MinerU task URLs.
+   normalizes model JSON, and renders native or MinerU-compatible responses on
+   the configured public listener.
 
 No Docker runtime is required.
 

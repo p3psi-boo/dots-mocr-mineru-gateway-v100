@@ -20,7 +20,7 @@
 ```text
 客户端
   │
-  ▼ :8000（生产经 Nginx；本地/API 容器可直接 :8010 / :8000）
+  ▼ :8000
 FastAPI 网关
   ├── POST /v1/ocr/layout          原生 OCR
   └── MinerU 协议 v2               /file_parse、/tasks 等
@@ -29,7 +29,7 @@ FastAPI 网关
       vLLM + dots.mocr
 ```
 
-运行时由三个独立进程组成：vLLM（模型服务）、FastAPI 网关（校验、分页、调用 vLLM、JSON 修复与 MinerU 映射）、Nginx（生产环境公网监听，可选）。Docker Compose 模式下 vLLM 仅在内网暴露，对外只发布网关端口。
+运行时由两个独立进程组成：vLLM（模型服务）与 FastAPI 网关（校验、分页、调用 vLLM、JSON 修复与 MinerU 映射）。Docker Compose 模式下 vLLM 仅在内网暴露，对外只发布网关端口。
 
 V100 上已验证的 vLLM 配置要点：解码器 attention 使用 Triton（SM70 不支持 XFormers paged decoding），视觉编码器使用 XFormers，FP16，默认 4 路并发序列。详见 [docs/architecture.md](docs/architecture.md)。
 
@@ -41,7 +41,7 @@ V100 上已验证的 vLLM 配置要点：解码器 attention 使用 Triton（SM7
 | GPU | NVIDIA GPU 及与所选 PyTorch/vLLM 版本匹配的驱动 |
 | Python | 网关 3.10–3.13；仓库 flake / `.python-version` 固定 3.12 |
 | 开发环境 | 推荐 [Nix](https://nixos.org/) flakes；亦可自行安装 uv 与 Node.js 24 |
-| 生产 | systemd + Nginx（模板随仓库提供） |
+| 部署 | Docker Compose，或本地脚本启动 vLLM + 网关 |
 | 磁盘 | 模型权重约 6 GB，另需缓存与编译产物空间 |
 
 ## 使用教程
@@ -101,7 +101,7 @@ set -a; source .env; set +a
 ./scripts/run-api.sh
 ```
 
-默认监听 `[::]:8010`。客户端可直接访问 8010，或通过 Nginx 暴露 8000。
+默认监听 `[::]:8000`。
 
 健康检查：
 
@@ -120,23 +120,7 @@ chmod 600 .env.docker
 
 拓扑：`主机 :8000 → api :8000 → vllm :8001`（vLLM 不对外映射）。V100 上模型冷启动约 90–120 秒，Compose 会等待 vLLM 健康后再启动 API。详见 [docs/docker.md](docs/docker.md)。
 
-### 6. 生产部署（systemd）
-
-在目标路径（如 `/opt/dotocrm`）执行：
-
-```bash
-sudo apt-get install -y nginx
-./scripts/bootstrap.sh --with-vllm
-./scripts/download-model.sh
-DOTOCRM_USER="$USER" ./scripts/install-systemd.sh
-./scripts/install-nginx.sh
-sudo systemctl start dotocrm-vllm dotocrm-api
-./scripts/healthcheck.sh
-```
-
-服务模板按当前仓库路径渲染，不要求固定安装在 `/opt/dotocrm`。
-
-### 7. 调用示例
+### 6. 调用示例
 
 **原生版面 OCR**（需 `X-API-Key`）：
 
@@ -165,7 +149,7 @@ curl -X POST http://HOST:8000/tasks \
   -F 'return_md=true'
 ```
 
-### 8. WebUI
+### 7. WebUI
 
 浏览器访问网关根路径（如 `http://HOST:8000/`）。内置 SvelteKit SPA，通过 MinerU 异步任务 API 完成上传、排队、结果预览；任务 ID 存 localStorage，原件与结果存 IndexedDB。
 
@@ -257,11 +241,9 @@ make docker-down
 ```text
 src/dotmocr_api/     Python 网关包
 web/                  SvelteKit WebUI
-deploy/systemd/       systemd 安装模板
-deploy/nginx/         Nginx 模板
 docker/               API 镜像构建
 compose*.yaml         完整栈 / 仅 API 迁移测试
-scripts/              引导、模型、运行、安装、健康检查
+scripts/              引导、模型、运行、健康检查
 tests/                单元测试与 MinerU 兼容测试
 docs/                 架构、Docker、MinerU 兼容说明
 ```
