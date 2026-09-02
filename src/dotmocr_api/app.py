@@ -32,13 +32,21 @@ PUBLIC_API_KEY = os.getenv("PUBLIC_API_KEY", "")
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(15 * 1024 * 1024)))
 MAX_IMAGE_PIXELS = int(os.getenv("OCR_MAX_PIXELS", "2200000"))
 MAX_OUTPUT_TOKENS = int(os.getenv("OCR_MAX_OUTPUT_TOKENS", "8192"))
-REQUEST_TIMEOUT_SECONDS = float(os.getenv("OCR_TIMEOUT_SECONDS", "240"))
+REQUEST_TIMEOUT_SECONDS = float(os.getenv("OCR_TIMEOUT_SECONDS", "360"))
+# Concurrent GPU requests. Keep in step with vLLM's --max-num-seqs.
+MAX_INFLIGHT = int(os.getenv("OCR_MAX_INFLIGHT", "4"))
+# 1.0 disables the penalty. Small values (1.02-1.05) can break repetition
+# loops but may change OCR output; validate on sample pages before enabling.
+REPETITION_PENALTY = float(os.getenv("OCR_REPETITION_PENALTY", "1.0"))
+# Abort generation once the streamed output ends with this many characters of
+# exact repetition. 0 disables the guard.
+LOOP_GUARD_CHARS = int(os.getenv("OCR_LOOP_GUARD_CHARS", "1024"))
+LOOP_GUARD_INTERVAL = 256
 DEFAULT_WEBUI_DIR = Path(__file__).resolve().parents[2] / "web" / "build"
 WEBUI_STATIC_DIR = Path(os.getenv("WEBUI_STATIC_DIR", DEFAULT_WEBUI_DIR))
 
 IMAGE_FACTOR = 28
 MIN_IMAGE_PIXELS = 3136
-MAX_INFLIGHT = 2
 
 Image.MAX_IMAGE_PIXELS = 80_000_000
 
@@ -86,8 +94,8 @@ async def lifespan(app: FastAPI):
     app.state.http = httpx.AsyncClient(
         timeout=httpx.Timeout(REQUEST_TIMEOUT_SECONDS, connect=10.0),
         limits=httpx.Limits(
-            max_connections=8,
-            max_keepalive_connections=4,
+            max_connections=MAX_INFLIGHT + 4,
+            max_keepalive_connections=MAX_INFLIGHT,
         ),
     )
 
@@ -435,6 +443,132 @@ async def service_log_entries(after: int = 0, limit: int = 200) -> dict[str, Any
     return service_logs.read(after=max(0, after), limit=limit)
 
 
+def find_repetition_period(text: str, min_span: int) -> int | None:
+    """Return the unit length when ``text`` ends in an exact repetition loop.
+
+    A loop is a unit of ``period`` characters repeated back to back at least
+    three times and covering at least ``min_span`` characters. Layout JSON
+    carries bounding boxes, so identical consecutive blocks only appear when
+    the model is stuck.
+    """
+    if min_span <= 0:
+        return None
+
+    length = len(text)
+    if length < min_span:
+        return None
+
+    last = text[-1]
+    max_period = min(min_span, length // 3)
+
+    for period in range(1, max_period + 1):
+        if text[length - 1 - period] != last:
+            continue
+
+        repeats = max(3, -(-min_span // period))
+        if period * repeats > length:
+            continue
+
+        unit = text[length - period :]
+        if text.endswith(unit * repeats):
+            return period
+
+    return None
+
+
+def trim_repetition(text: str, period: int) -> str:
+    """Drop repeated tail units, keeping a single copy."""
+    unit = text[-period:]
+    while text.endswith(unit * 2):
+        text = text[:-period]
+    return text
+
+
+class StreamedCompletion:
+    __slots__ = (
+        "content",
+        "finish_reason",
+        "usage",
+        "loop_period",
+        "status_code",
+        "error_text",
+    )
+
+    def __init__(self) -> None:
+        self.content = ""
+        self.finish_reason: str | None = None
+        self.usage: dict[str, Any] | None = None
+        self.loop_period: int | None = None
+        self.status_code = 200
+        self.error_text = ""
+
+
+async def stream_completion(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    headers: dict[str, str],
+    body: dict[str, Any],
+) -> StreamedCompletion:
+    """Consume a streamed chat completion and abort on a repetition loop.
+
+    Closing the stream early disconnects the client, which makes vLLM abort
+    the request and free its slot.
+    """
+    result = StreamedCompletion()
+    parts: list[str] = []
+    length = 0
+    next_check = LOOP_GUARD_CHARS
+
+    async with client.stream("POST", url, headers=headers, json=body) as response:
+        if response.status_code >= 400:
+            await response.aread()
+            result.status_code = response.status_code
+            result.error_text = response.text[:500]
+            return result
+
+        async for line in response.aiter_lines():
+            if not line.startswith("data:"):
+                continue
+
+            data = line[5:].strip()
+            if data == "[DONE]":
+                break
+
+            chunk = orjson.loads(data)
+            usage = chunk.get("usage")
+            if usage:
+                result.usage = usage
+
+            choices = chunk.get("choices") or []
+            if not choices:
+                continue
+
+            choice = choices[0]
+            delta = (choice.get("delta") or {}).get("content")
+            if delta:
+                parts.append(delta)
+                length += len(delta)
+
+            if choice.get("finish_reason"):
+                result.finish_reason = choice["finish_reason"]
+
+            if LOOP_GUARD_CHARS and length >= next_check:
+                text = "".join(parts)
+                parts = [text]
+                period = find_repetition_period(text, LOOP_GUARD_CHARS)
+                if period is not None:
+                    result.loop_period = period
+                    break
+                next_check = length + LOOP_GUARD_INTERVAL
+
+    result.content = "".join(parts)
+    if result.loop_period is not None:
+        result.content = trim_repetition(result.content, result.loop_period)
+
+    return result
+
+
 @app.post(
     "/v1/ocr/layout",
     tags=["Layout OCR"],
@@ -506,8 +640,12 @@ async def infer_layout_image(
         "temperature": 0.0,
         "top_p": 1.0,
         "max_completion_tokens": MAX_OUTPUT_TOKENS,
-        "stream": False,
+        "stream": True,
+        "stream_options": {"include_usage": True},
     }
+
+    if REPETITION_PENALTY != 1.0:
+        request_body["repetition_penalty"] = REPETITION_PENALTY
 
     headers = {
         "Authorization": f"Bearer {VLLM_API_KEY}",
@@ -532,12 +670,18 @@ async def infer_layout_image(
         )
 
         try:
-            response = await app.state.http.post(
-                f"{VLLM_BASE_URL}/v1/chat/completions",
-                headers=headers,
-                json=request_body,
+            # wait_for bounds the whole stream; the httpx timeout only bounds
+            # the gap between chunks.
+            streamed = await asyncio.wait_for(
+                stream_completion(
+                    app.state.http,
+                    f"{VLLM_BASE_URL}/v1/chat/completions",
+                    headers=headers,
+                    body=request_body,
+                ),
+                timeout=REQUEST_TIMEOUT_SECONDS,
             )
-        except httpx.TimeoutException as exc:
+        except (asyncio.TimeoutError, TimeoutError, httpx.TimeoutException) as exc:
             service_logs.emit(
                 "error",
                 "vllm",
@@ -561,39 +705,40 @@ async def infer_layout_image(
                 detail="Could not reach model server",
             ) from exc
 
+        except (KeyError, TypeError, orjson.JSONDecodeError) as exc:
+            raise HTTPException(
+                status_code=502,
+                detail="Invalid vLLM response",
+            ) from exc
+
         model_ms = round((time.perf_counter() - model_started) * 1000)
 
-    if response.status_code >= 400:
-        detail = response.text[:500]
-
+    if streamed.status_code >= 400:
         service_logs.emit(
             "error",
             "vllm",
             "Model server returned an error",
             request_id=request_id,
-            status_code=response.status_code,
+            status_code=streamed.status_code,
         )
 
         raise HTTPException(
             status_code=502,
-            detail=f"vLLM error: {detail}",
+            detail=f"vLLM error: {streamed.error_text}",
         )
 
-    try:
-        completion = orjson.loads(response.content)
-        choice = completion["choices"][0]
-        content = choice["message"]["content"]
-        finish_reason = choice.get("finish_reason")
-    except (KeyError, IndexError, TypeError, orjson.JSONDecodeError) as exc:
-        raise HTTPException(
-            status_code=502,
-            detail="Invalid vLLM response",
-        ) from exc
+    content = streamed.content
+    finish_reason = streamed.finish_reason
 
-    if not isinstance(content, str):
-        raise HTTPException(
-            status_code=502,
-            detail="Model content is not text",
+    if streamed.loop_period is not None:
+        service_logs.emit(
+            "warning",
+            "vllm",
+            "Repetition loop detected, generation aborted",
+            request_id=request_id,
+            period=streamed.loop_period,
+            chars=len(content),
+            model_ms=model_ms,
         )
 
     try:
@@ -614,9 +759,11 @@ async def infer_layout_image(
     if repaired:
         warnings.append("model_json_repaired")
 
-    complete = finish_reason != "length"
+    complete = finish_reason == "stop"
 
-    if not complete:
+    if streamed.loop_period is not None:
+        warnings.append("repetition_loop_aborted")
+    elif not complete:
         warnings.append("output_truncated")
 
     total_ms = round((time.perf_counter() - total_started) * 1000)
@@ -634,7 +781,7 @@ async def infer_layout_image(
             "bbox_space": "original_pixels",
         },
         "blocks": blocks,
-        "usage": completion.get("usage"),
+        "usage": streamed.usage,
         "timing_ms": {
             "queue": queue_ms,
             "model": model_ms,
@@ -643,7 +790,7 @@ async def infer_layout_image(
         "warnings": warnings,
     }
 
-    usage = completion.get("usage") or {}
+    usage = streamed.usage or {}
     service_logs.emit(
         "info",
         "vllm",

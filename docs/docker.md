@@ -86,6 +86,7 @@ The Compose service retains the known-good host deployment settings:
 - FP16
 - decoder attention backend: Triton
 - multimodal encoder attention backend: XFormers
-- two concurrent sequences
+- four concurrent sequences
+- no multimodal processor cache
 - 0.88 GPU memory utilization
 - no prefix cache

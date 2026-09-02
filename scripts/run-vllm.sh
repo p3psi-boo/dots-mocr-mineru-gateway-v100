@@ -25,11 +25,13 @@ exec "$ROOT/.venv/bin/vllm" serve "$MODEL_PATH" \
   --tensor-parallel-size 1 \
   --gpu-memory-utilization "${VLLM_GPU_MEMORY_UTILIZATION:-0.88}" \
   --max-model-len "${VLLM_MAX_MODEL_LEN:-16384}" \
-  --max-num-seqs "${VLLM_MAX_NUM_SEQS:-2}" \
+  --max-num-seqs "${VLLM_MAX_NUM_SEQS:-4}" \
   --max-num-batched-tokens "${VLLM_MAX_BATCHED_TOKENS:-8192}" \
   --enable-chunked-prefill \
   --no-enable-prefix-caching \
   --limit-mm-per-prompt '{"image":1}' \
+  --mm-processor-cache-gb 0 \
+  --disable-uvicorn-access-log \
   --mm-encoder-attn-backend XFORMERS \
   --chat-template-content-format string \
   --generation-config vllm \

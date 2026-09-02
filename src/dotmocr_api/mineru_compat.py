@@ -25,7 +25,9 @@ from .service_logs import service_logs
 
 PROTOCOL_VERSION = 2
 COMPAT_VERSION = f"dots.mocr-mineru-compat-{__version__}"
-MAX_CONCURRENT_REQUESTS = 2
+MAX_CONCURRENT_REQUESTS = int(
+    os.getenv("MINERU_MAX_CONCURRENT_REQUESTS", os.getenv("OCR_MAX_INFLIGHT", "4"))
+)
 PROCESSING_WINDOW_SIZE = int(os.getenv("MINERU_PROCESSING_WINDOW_SIZE", "64"))
 TASK_RETENTION_SECONDS = int(os.getenv("MINERU_TASK_RETENTION_SECONDS", "86400"))
 MAX_FILES_PER_REQUEST = int(os.getenv("MINERU_MAX_FILES", "8"))

@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from dotmocr_api import mineru_compat
 from dotmocr_api.app import decode_image
 from dotmocr_api.mineru_compat import create_mineru_router
 
@@ -73,7 +74,7 @@ def test_health_matches_mineru_protocol_v2():
     payload = response.json()
     assert payload["status"] == "healthy"
     assert payload["protocol_version"] == 2
-    assert payload["max_concurrent_requests"] == 2
+    assert payload["max_concurrent_requests"] == mineru_compat.MAX_CONCURRENT_REQUESTS
 
 
 def test_sync_file_parse_returns_mineru_shaped_artifacts():

@@ -20,7 +20,9 @@ The tested runtime uses vLLM 0.11.2 on a V100/SM70 GPU:
 - multimodal encoder attention: `--mm-encoder-attn-backend XFORMERS`
 - dtype: FP16
 - tensor parallel size: 1
-- maximum concurrent sequences: 2
+- maximum concurrent sequences: 4 (`VLLM_MAX_NUM_SEQS`)
+- multimodal processor cache disabled: pages never repeat
+- uvicorn access log disabled
 
 vLLM 0.11.2's XFormers paged-decoding operators require SM80, so the decoder
 must use Triton on V100. The vision encoder remains on XFormers.
@@ -39,7 +41,15 @@ must use Triton on V100. The vision encoder remains on XFormers.
 
 ## State and concurrency
 
-- GPU calls share a process-wide semaphore with a limit of two.
-- MinerU tasks use an in-memory task manager and a two-task processing window.
+- GPU calls share a process-wide semaphore limited by `OCR_MAX_INFLIGHT`
+  (default 4), which must match vLLM's `--max-num-seqs`.
+- MinerU tasks use an in-memory task manager; `MINERU_MAX_CONCURRENT_REQUESTS`
+  tasks run at once and defaults to `OCR_MAX_INFLIGHT`.
+- Completions are streamed. When the output tail becomes an exact repetition
+  of at least `OCR_LOOP_GUARD_CHARS` characters, the gateway closes the
+  stream so vLLM aborts the request, trims the repeated tail, and returns the
+  page with `complete: false` and a `repetition_loop_aborted` warning.
+- `OCR_REPETITION_PENALTY` (default 1.0, disabled) is passed to vLLM when
+  set; it changes model output, so validate before enabling.
 - Completed task artifacts are retained for 24 hours by default.
 - Each API process has independent task state; production uses one API worker.
